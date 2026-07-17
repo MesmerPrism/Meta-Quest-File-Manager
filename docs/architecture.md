@@ -34,11 +34,14 @@ that core and do not redefine behavior.
 ## Interfaces
 
 `ICommandRunner` is the external-process boundary. `AdbClient` exposes device,
-file, and package routes. Arguments remain structured until they reach the
+file, and package routes. `OperatorCommand` is the shared human-operator
+contract: its immutable inputs produce both the CLI argument vector and the
+core execution request. Arguments remain structured until they reach the
 process API. Remote shell paths use one audited POSIX quoting helper.
 
 The CLI is the contract surface for future GUI, Android-host, and Apple-host
-adapters. Any new GUI action must first have an equivalent core and CLI route.
+adapters. Any new GUI action must first have an equivalent typed command, CLI
+route, copyable PowerShell rendering, and parity test.
 
 ## Observability
 
@@ -53,6 +56,8 @@ evidence local.
 ## Validation
 
 - Unit tests use a fake process runner and never require a headset.
+- Operator-contract tests cover every WPF operation from its exact CLI
+  arguments through the serial-scoped ADB projection.
 - Parsers cover ready, unauthorized, and offline devices; file paths with
   spaces; package lists; single APKs; and split APK rejection.
 - CI builds the WPF app, runs the core tests, exercises CLI help, and scans the

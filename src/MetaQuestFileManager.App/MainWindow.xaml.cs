@@ -10,6 +10,7 @@ namespace MetaQuestFileManager.App;
 public partial class MainWindow : Window
 {
     private readonly AdbClient? _client;
+    private readonly OperatorCommandExecutor? _operator;
     private bool _busy;
 
     public MainWindow()
@@ -27,6 +28,7 @@ public partial class MainWindow : Window
         }
 
         _client = new AdbClient(adbPath);
+        _operator = new OperatorCommandExecutor(_client);
         AdbPathText.Text = $"ADB: {adbPath}";
     }
 
@@ -114,7 +116,12 @@ public partial class MainWindow : Window
         await RunBusyAsync(
             async () =>
             {
-                await RequireClient().PullFileAsync(RequireReadyDevice().Serial, entry.FullPath, dialog.FileName);
+                var command = OperatorCommands.PullFile(
+                    RequireReadyDevice().Serial,
+                    entry.FullPath,
+                    dialog.FileName);
+                SetOperatorCommand(command);
+                await RequireOperator().ExecuteAsync(command);
                 StatusText.Text = $"Saved {entry.Name} to {dialog.FileName}.";
             },
             $"Pulling {entry.Name}…");
@@ -162,11 +169,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        var command = OperatorCommands.PushFile(device.Serial, dialog.FileName, remotePath);
+        SetOperatorCommand(command);
         await RunBusyAsync(
             async () =>
             {
-                await RequireClient().PushFileAsync(device.Serial, dialog.FileName, remotePath);
+                await RequireOperator().ExecuteAsync(command);
                 await RefreshRemoteDirectoryAsync();
+                SetOperatorCommand(command);
                 StatusText.Text = $"Copied {Path.GetFileName(dialog.FileName)} to {remotePath}.";
             },
             $"Pushing {Path.GetFileName(dialog.FileName)}…");
@@ -217,10 +227,12 @@ public partial class MainWindow : Window
             GrantRuntimePermissions: GrantPermissionsBox.IsChecked == true,
             AllowTestPackages: AllowTestPackageBox.IsChecked == true);
 
+        var command = OperatorCommands.InstallApk(device.Serial, apkPath, options);
+        SetOperatorCommand(command);
         await RunBusyAsync(
             async () =>
             {
-                await RequireClient().InstallApkAsync(device.Serial, apkPath, options);
+                await RequireOperator().ExecuteAsync(command);
                 StatusText.Text = $"Installed {Path.GetFileName(apkPath)} on {device.Serial}.";
             },
             $"Installing {Path.GetFileName(apkPath)}…");
@@ -251,14 +263,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        var command = OperatorCommands.ExportApk(
+            RequireReadyDevice().Serial,
+            packageName,
+            dialog.FileName,
+            overwrite: true);
+        SetOperatorCommand(command);
         await RunBusyAsync(
             async () =>
             {
-                var result = await RequireClient().ExportSingleApkAsync(
-                    RequireReadyDevice().Serial,
-                    packageName,
-                    dialog.FileName,
-                    overwrite: true);
+                var execution = await RequireOperator().ExecuteAsync(command);
+                var result = execution.ApkExportResult ??
+                    throw new InvalidOperationException("APK export returned no result.");
                 StatusText.Text = $"Exported {packageName}. SHA-256 {result.Sha256[..12]}…";
             },
             $"Exporting {packageName}…");
@@ -266,7 +282,11 @@ public partial class MainWindow : Window
 
     private async Task RefreshDevicesAsync()
     {
-        var devices = await RequireClient().GetDevicesAsync();
+        var command = OperatorCommands.DiscoverDevices();
+        SetOperatorCommand(command);
+        var execution = await RequireOperator().ExecuteAsync(command);
+        var devices = execution.Devices ??
+            throw new InvalidOperationException("Device discovery returned no device collection.");
         DeviceBox.ItemsSource = devices;
         DeviceBox.SelectedItem = devices.FirstOrDefault(static device => device.IsReady) ?? devices.FirstOrDefault();
         StatusText.Text = devices.Count == 0
@@ -278,14 +298,22 @@ public partial class MainWindow : Window
     {
         var path = AndroidInput.RequireRemotePath(RemotePathBox.Text);
         RemotePathBox.Text = path;
-        var entries = await RequireClient().ListRemoteDirectoryAsync(RequireReadyDevice().Serial, path);
+        var command = OperatorCommands.ListFiles(RequireReadyDevice().Serial, path);
+        SetOperatorCommand(command);
+        var execution = await RequireOperator().ExecuteAsync(command);
+        var entries = execution.RemoteEntries ??
+            throw new InvalidOperationException("File listing returned no entry collection.");
         RemoteEntriesGrid.ItemsSource = entries;
         StatusText.Text = $"{entries.Count} entries in {path}.";
     }
 
     private async Task RefreshPackagesAsync()
     {
-        var packages = await RequireClient().GetThirdPartyPackageNamesAsync(RequireReadyDevice().Serial);
+        var command = OperatorCommands.ListPackages(RequireReadyDevice().Serial);
+        SetOperatorCommand(command);
+        var execution = await RequireOperator().ExecuteAsync(command);
+        var packages = execution.Packages ??
+            throw new InvalidOperationException("Package listing returned no package collection.");
         PackagesList.ItemsSource = packages;
         StatusText.Text = $"Loaded {packages.Count} third-party packages.";
     }
@@ -324,6 +352,29 @@ public partial class MainWindow : Window
     private AdbClient RequireClient() =>
         _client ?? throw new InvalidOperationException(
             "ADB was not found. Install Android Platform Tools or configure META_QUEST_FILE_MANAGER_ADB.");
+
+    private OperatorCommandExecutor RequireOperator() =>
+        _operator ?? throw new InvalidOperationException(
+            "ADB was not found. Install Android Platform Tools or configure META_QUEST_FILE_MANAGER_ADB.");
+
+    private void SetOperatorCommand(OperatorCommand command)
+    {
+        OperatorCommandTextBox.Text = command.ToPowerShellCommand(
+            ".\\meta-quest-file-manager.exe",
+            RequireClient().AdbPath);
+        CopyOperatorCommandButton.IsEnabled = true;
+    }
+
+    private void OnCopyOperatorCommand(object sender, RoutedEventArgs eventArgs)
+    {
+        if (string.IsNullOrWhiteSpace(OperatorCommandTextBox.Text))
+        {
+            return;
+        }
+
+        Clipboard.SetText(OperatorCommandTextBox.Text);
+        StatusText.Text = "Copied the exact equivalent CLI command.";
+    }
 
     private async Task RunBusyAsync(Func<Task> action, string progressMessage)
     {

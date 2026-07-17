@@ -23,7 +23,9 @@ action can be automated and tested.
 - reject split APK packages with an actionable explanation;
 - install a user-supplied APK with explicit reinstall, downgrade, runtime
   permission, and test-package options;
-- expose the same routes through a Windows WPF app and CLI.
+- expose the same typed routes through a Windows WPF app and CLI;
+- display the exact copyable PowerShell command for the operation most recently
+  triggered in the WPF app.
 
 The app does not copy app data, saves, OBB folders, downloaded asset packs, or
 store entitlements. ADB only exposes paths permitted to the Android shell
@@ -66,11 +68,15 @@ dotnet run --project src/MetaQuestFileManager.Cli -- apk install --serial <quest
 
 Pass `--json` to list commands for machine-readable output. Pass `--adb` to
 select an explicit ADB executable without changing global machine settings.
+The Windows release archive places `MetaQuestFileManager.exe` and
+`meta-quest-file-manager.exe` beside each other so every displayed GUI command
+can be run directly in PowerShell.
 
 ## Design And Safety
 
 - [Architecture](docs/architecture.md)
 - [ADB scope and safety](docs/adb-scope-and-safety.md)
+- [GUI and CLI operator parity](docs/operator-cli-parity.md)
 - [Release workflow](docs/release-workflow.md)
 - [Reference intake](docs/reference-intake.md)
 

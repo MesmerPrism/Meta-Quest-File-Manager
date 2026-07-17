@@ -75,8 +75,12 @@ jobs:
         shell: pwsh
         run: |
           $releaseRoot = Join-Path $PWD 'artifacts/release'
+          $windowsRoot = Join-Path $PWD 'artifacts/windows-win-x64'
           New-Item -ItemType Directory -Force $releaseRoot | Out-Null
-          Compress-Archive -Path artifacts/app-win-x64/* -DestinationPath "$releaseRoot/MetaQuestFileManager-win-x64.zip"
+          New-Item -ItemType Directory -Force $windowsRoot | Out-Null
+          Copy-Item artifacts/app-win-x64/* $windowsRoot -Recurse
+          Copy-Item artifacts/cli-win-x64/meta-quest-file-manager.exe $windowsRoot
+          Compress-Archive -Path artifacts/windows-win-x64/* -DestinationPath "$releaseRoot/MetaQuestFileManager-win-x64.zip"
           Compress-Archive -Path artifacts/cli-win-x64/* -DestinationPath "$releaseRoot/meta-quest-file-manager-cli-win-x64.zip"
           Get-FileHash "$releaseRoot/*.zip" -Algorithm SHA256 |
             ForEach-Object { '{0} *{1}' -f $_.Hash.ToLowerInvariant(), [IO.Path]::GetFileName($_.Path) } |

@@ -11,6 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="76" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="82" />
             <RowDefinition Height="38" />
         </Grid.RowDefinitions>
 
@@ -225,6 +226,51 @@
         </TabControl>
 
         <Border Grid.Row="2"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="20,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               FontFamily="Bahnschrift SemiBold"
+                               Text="Equivalent CLI command" />
+                    <TextBlock Grid.Column="1"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="Uses the same typed operation as the GUI" />
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="OperatorCommandTextBox"
+                             Grid.Column="0"
+                             IsReadOnly="True"
+                             FontFamily="Cascadia Mono"
+                             FontSize="12"
+                             AutomationProperties.Name="Exact equivalent CLI command"
+                             HorizontalScrollBarVisibility="Auto"
+                             Text="Run an operation to see its exact PowerShell command." />
+                    <Button x:Name="CopyOperatorCommandButton"
+                            Grid.Column="1"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource SecondaryButton}"
+                            IsEnabled="False"
+                            Click="OnCopyOperatorCommand"
+                            Content="Copy command" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3"
                 Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,1,0,0">

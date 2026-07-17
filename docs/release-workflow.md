@@ -12,8 +12,12 @@ The first release workflow will publish:
 - `meta-quest-file-manager-cli-win-x64.zip`;
 - `SHA256SUMS.txt`.
 
-The archives are self-contained .NET 10 Windows x64 publishes. Android
-Platform Tools are not bundled in this first lane.
+The archives are self-contained .NET 10 Windows x64 publishes. The primary
+archive contains both `MetaQuestFileManager.exe` and
+`meta-quest-file-manager.exe`; this makes every command displayed by the GUI
+runnable from the same extracted directory. The second archive remains a
+CLI-only automation download. Android Platform Tools are not bundled in this
+first lane.
 
 ## Signed Guided Delivery
 

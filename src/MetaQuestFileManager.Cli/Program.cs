@@ -21,12 +21,13 @@ internal static class CliApplication
         try
         {
             var client = AdbClient.CreateDefault(GetOption(arguments, "--adb"));
+            var executor = new OperatorCommandExecutor(client);
             var command = arguments[0].ToLowerInvariant();
             return command switch
             {
-                "devices" => await RunDevicesAsync(client, arguments),
-                "files" => await RunFilesAsync(client, arguments),
-                "apk" => await RunApkAsync(client, arguments),
+                "devices" => await RunDevicesAsync(executor, arguments),
+                "files" => await RunFilesAsync(executor, arguments),
+                "apk" => await RunApkAsync(executor, arguments),
                 _ => throw new ArgumentException($"Unknown command: {arguments[0]}")
             };
         }
@@ -46,9 +47,12 @@ internal static class CliApplication
         }
     }
 
-    private static async Task<int> RunDevicesAsync(AdbClient client, string[] arguments)
+    private static async Task<int> RunDevicesAsync(
+        OperatorCommandExecutor executor,
+        string[] arguments)
     {
-        var devices = await client.GetDevicesAsync();
+        var result = await executor.ExecuteAsync(OperatorCommands.DiscoverDevices());
+        var devices = result.Devices ?? throw new InvalidOperationException("Device discovery returned no device collection.");
         if (HasFlag(arguments, "--json"))
         {
             WriteJson(devices);
@@ -69,7 +73,9 @@ internal static class CliApplication
         return 0;
     }
 
-    private static async Task<int> RunFilesAsync(AdbClient client, string[] arguments)
+    private static async Task<int> RunFilesAsync(
+        OperatorCommandExecutor executor,
+        string[] arguments)
     {
         var action = RequireAction(arguments, "files");
         var serial = RequireOption(arguments, "--serial");
@@ -77,48 +83,53 @@ internal static class CliApplication
         switch (action)
         {
             case "list":
-            {
-                var remotePath = GetOption(arguments, "--path") ?? "/sdcard";
-                var entries = await client.ListRemoteDirectoryAsync(serial, remotePath);
-                if (HasFlag(arguments, "--json"))
                 {
-                    WriteJson(entries);
-                }
-                else
-                {
-                    foreach (var entry in entries)
+                    var remotePath = GetOption(arguments, "--path") ?? "/sdcard";
+                    var result = await executor.ExecuteAsync(OperatorCommands.ListFiles(serial, remotePath));
+                    var entries = result.RemoteEntries ??
+                        throw new InvalidOperationException("File listing returned no entry collection.");
+                    if (HasFlag(arguments, "--json"))
                     {
-                        Console.WriteLine($"{entry.TypeLabel}\t{entry.FullPath}");
+                        WriteJson(entries);
                     }
-                }
+                    else
+                    {
+                        foreach (var entry in entries)
+                        {
+                            Console.WriteLine($"{entry.TypeLabel}\t{entry.FullPath}");
+                        }
+                    }
 
-                return 0;
-            }
+                    return 0;
+                }
 
             case "pull":
-            {
-                var remotePath = RequireOption(arguments, "--remote");
-                var outputPath = RequireOption(arguments, "--output");
-                await client.PullFileAsync(serial, remotePath, outputPath);
-                Console.WriteLine(Path.GetFullPath(outputPath));
-                return 0;
-            }
+                {
+                    var remotePath = RequireOption(arguments, "--remote");
+                    var outputPath = RequireOption(arguments, "--output");
+                    var command = OperatorCommands.PullFile(serial, remotePath, outputPath);
+                    await executor.ExecuteAsync(command);
+                    Console.WriteLine(command.LocalPath);
+                    return 0;
+                }
 
             case "push":
-            {
-                var localPath = RequireOption(arguments, "--file");
-                var remotePath = RequireOption(arguments, "--remote");
-                await client.PushFileAsync(serial, localPath, remotePath);
-                Console.WriteLine(remotePath);
-                return 0;
-            }
+                {
+                    var localPath = RequireOption(arguments, "--file");
+                    var remotePath = RequireOption(arguments, "--remote");
+                    await executor.ExecuteAsync(OperatorCommands.PushFile(serial, localPath, remotePath));
+                    Console.WriteLine(remotePath);
+                    return 0;
+                }
 
             default:
                 throw new ArgumentException($"Unknown files action: {action}");
         }
     }
 
-    private static async Task<int> RunApkAsync(AdbClient client, string[] arguments)
+    private static async Task<int> RunApkAsync(
+        OperatorCommandExecutor executor,
+        string[] arguments)
     {
         var action = RequireAction(arguments, "apk");
         var serial = RequireOption(arguments, "--serial");
@@ -126,58 +137,62 @@ internal static class CliApplication
         switch (action)
         {
             case "list":
-            {
-                var packages = await client.GetThirdPartyPackageNamesAsync(serial);
-                if (HasFlag(arguments, "--json"))
                 {
-                    WriteJson(packages);
-                }
-                else
-                {
-                    foreach (var packageName in packages)
+                    var result = await executor.ExecuteAsync(OperatorCommands.ListPackages(serial));
+                    var packages = result.Packages ??
+                        throw new InvalidOperationException("Package listing returned no package collection.");
+                    if (HasFlag(arguments, "--json"))
                     {
-                        Console.WriteLine(packageName);
+                        WriteJson(packages);
                     }
-                }
+                    else
+                    {
+                        foreach (var packageName in packages)
+                        {
+                            Console.WriteLine(packageName);
+                        }
+                    }
 
-                return 0;
-            }
+                    return 0;
+                }
 
             case "export":
-            {
-                var packageName = RequireOption(arguments, "--package");
-                var outputPath = RequireOption(arguments, "--output");
-                var result = await client.ExportSingleApkAsync(
-                    serial,
-                    packageName,
-                    outputPath,
-                    overwrite: HasFlag(arguments, "--overwrite"));
-                if (HasFlag(arguments, "--json"))
                 {
-                    WriteJson(result);
-                }
-                else
-                {
-                    Console.WriteLine($"APK: {result.OutputPath}");
-                    Console.WriteLine($"SHA-256: {result.Sha256}");
-                    Console.WriteLine($"Checksum: {result.ChecksumPath}");
-                }
+                    var packageName = RequireOption(arguments, "--package");
+                    var outputPath = RequireOption(arguments, "--output");
+                    var execution = await executor.ExecuteAsync(OperatorCommands.ExportApk(
+                        serial,
+                        packageName,
+                        outputPath,
+                        overwrite: HasFlag(arguments, "--overwrite")));
+                    var result = execution.ApkExportResult ??
+                        throw new InvalidOperationException("APK export returned no export result.");
+                    if (HasFlag(arguments, "--json"))
+                    {
+                        WriteJson(result);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"APK: {result.OutputPath}");
+                        Console.WriteLine($"SHA-256: {result.Sha256}");
+                        Console.WriteLine($"Checksum: {result.ChecksumPath}");
+                    }
 
-                return 0;
-            }
+                    return 0;
+                }
 
             case "install":
-            {
-                var apkPath = RequireOption(arguments, "--file");
-                var options = new ApkInstallOptions(
-                    ReplaceExisting: !HasFlag(arguments, "--no-replace"),
-                    AllowDowngrade: HasFlag(arguments, "--downgrade"),
-                    GrantRuntimePermissions: HasFlag(arguments, "--grant-runtime-permissions"),
-                    AllowTestPackages: HasFlag(arguments, "--test-only"));
-                var result = await client.InstallApkAsync(serial, apkPath, options);
-                Console.WriteLine(result.StandardOutput.Trim());
-                return 0;
-            }
+                {
+                    var apkPath = RequireOption(arguments, "--file");
+                    var options = new ApkInstallOptions(
+                        ReplaceExisting: !HasFlag(arguments, "--no-replace"),
+                        AllowDowngrade: HasFlag(arguments, "--downgrade"),
+                        GrantRuntimePermissions: HasFlag(arguments, "--grant-runtime-permissions"),
+                        AllowTestPackages: HasFlag(arguments, "--test-only"));
+                    var execution = await executor.ExecuteAsync(OperatorCommands.InstallApk(serial, apkPath, options));
+                    Console.WriteLine(execution.CommandResult?.StandardOutput.Trim());
+                    return 0;
+                }
 
             default:
                 throw new ArgumentException($"Unknown apk action: {action}");

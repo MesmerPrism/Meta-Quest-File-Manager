@@ -11,9 +11,11 @@ single-APK export, user-supplied APK installation, diagnostics, and Windows
 delivery. It does not own Quest runtime behavior, bypass Android permissions,
 or promise access to protected app data.
 
-The GUI and CLI must invoke the same core routes. UI handlers collect inputs,
-invoke those routes, and display structured results; they must not hide ADB or
-filesystem business logic.
+The GUI and CLI must invoke the same typed `OperatorCommand` routes. Every GUI
+operation displays a copyable PowerShell command built from the same immutable
+arguments it executes. UI handlers collect inputs, invoke those routes, and
+display structured results; they must not hide ADB or filesystem business
+logic.
 
 ## Public Boundary
 
@@ -58,7 +60,8 @@ dotnet run --project src/MetaQuestFileManager.App
 ## Architecture
 
 - `MetaQuestFileManager.Core` owns process execution, ADB discovery, command
-  construction, output parsing, transfers, APK install/export, and hashes.
+  construction, typed operator commands, output parsing, transfers, APK
+  install/export, and hashes.
 - `MetaQuestFileManager.Cli` is the automation-equivalent operator surface.
 - `MetaQuestFileManager.App` is the Windows WPF projection.
 - Keep external processes behind `ICommandRunner` and preserve cancellation
@@ -66,6 +69,8 @@ dotnet run --project src/MetaQuestFileManager.App
 - Use `ProcessStartInfo.ArgumentList`; never construct a host shell command.
 - Keep future Android and Apple clients as adapters over explicit contracts,
   not as reasons to put platform UI into the core.
+- A GUI/CLI parity test must cover every WPF operation before a new button is
+  accepted.
 
 ## Release Posture
 
