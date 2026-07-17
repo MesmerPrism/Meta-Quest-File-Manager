@@ -19,9 +19,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.201
 
@@ -86,7 +86,7 @@ jobs:
             ForEach-Object { '{0} *{1}' -f $_.Hash.ToLowerInvariant(), [IO.Path]::GetFileName($_.Path) } |
             Set-Content "$releaseRoot/SHA256SUMS.txt" -Encoding utf8
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MetaQuestFileManager-windows-preview
           path: artifacts/release
