@@ -28,6 +28,7 @@ internal static class CliApplication
                 "devices" => await RunDevicesAsync(executor, arguments),
                 "files" => await RunFilesAsync(executor, arguments),
                 "apk" => await RunApkAsync(executor, arguments),
+                "wifi" => await RunWifiAsync(executor, arguments),
                 _ => throw new ArgumentException($"Unknown command: {arguments[0]}")
             };
         }
@@ -132,12 +133,12 @@ internal static class CliApplication
         string[] arguments)
     {
         var action = RequireAction(arguments, "apk");
-        var serial = RequireOption(arguments, "--serial");
 
         switch (action)
         {
             case "list":
                 {
+                    var serial = RequireOption(arguments, "--serial");
                     var result = await executor.ExecuteAsync(OperatorCommands.ListPackages(serial));
                     var packages = result.Packages ??
                         throw new InvalidOperationException("Package listing returned no package collection.");
@@ -158,6 +159,7 @@ internal static class CliApplication
 
             case "export":
                 {
+                    var serial = RequireOption(arguments, "--serial");
                     var packageName = RequireOption(arguments, "--package");
                     var outputPath = RequireOption(arguments, "--output");
                     var execution = await executor.ExecuteAsync(OperatorCommands.ExportApk(
@@ -183,6 +185,7 @@ internal static class CliApplication
 
             case "install":
                 {
+                    var serial = RequireOption(arguments, "--serial");
                     var apkPath = RequireOption(arguments, "--file");
                     var options = ReadInstallOptions(arguments);
                     var execution = await executor.ExecuteAsync(OperatorCommands.InstallApk(serial, apkPath, options));
@@ -192,6 +195,7 @@ internal static class CliApplication
 
             case "install-bundle":
                 {
+                    var serial = RequireOption(arguments, "--serial");
                     var folderPath = RequireOption(arguments, "--folder");
                     var options = ReadInstallOptions(arguments);
                     var execution = await executor.ExecuteAsync(
@@ -203,8 +207,113 @@ internal static class CliApplication
                     return 0;
                 }
 
+            case "install-many":
+                {
+                    var serials = GetOptions(arguments, "--serial");
+                    var apkPath = RequireOption(arguments, "--file");
+                    var options = ReadInstallOptions(arguments);
+                    var parallelism = GetIntegerOption(arguments, "--parallelism", 4);
+                    var execution = await executor.ExecuteAsync(
+                        OperatorCommands.InstallApkMany(serials, apkPath, options, parallelism));
+                    return WriteParallelInstallResult(
+                        execution.ParallelApkInstallResult ??
+                        throw new InvalidOperationException("Parallel APK installation returned no result."),
+                        HasFlag(arguments, "--json"));
+                }
+
+            case "install-bundle-many":
+                {
+                    var serials = GetOptions(arguments, "--serial");
+                    var folderPath = RequireOption(arguments, "--folder");
+                    var options = ReadInstallOptions(arguments);
+                    var parallelism = GetIntegerOption(arguments, "--parallelism", 4);
+                    var execution = await executor.ExecuteAsync(
+                        OperatorCommands.InstallApkBundleMany(serials, folderPath, options, parallelism));
+                    return WriteParallelInstallResult(
+                        execution.ParallelApkInstallResult ??
+                        throw new InvalidOperationException("Parallel APK bundle installation returned no result."),
+                        HasFlag(arguments, "--json"));
+                }
+
             default:
                 throw new ArgumentException($"Unknown apk action: {action}");
+        }
+    }
+
+    private static async Task<int> RunWifiAsync(
+        OperatorCommandExecutor executor,
+        string[] arguments)
+    {
+        var action = RequireAction(arguments, "wifi");
+        if (!HasFlag(arguments, "--confirm-wifi-adb"))
+        {
+            throw new ArgumentException(
+                "Wi-Fi ADB changes require --confirm-wifi-adb after operator approval.");
+        }
+
+        var port = GetIntegerOption(arguments, "--port", 5555);
+        switch (action)
+        {
+            case "enable":
+                {
+                    var serial = RequireOption(arguments, "--serial");
+                    var execution = await executor.ExecuteAsync(
+                        OperatorCommands.EnableWifiAdb(serial, port, operatorConfirmed: true));
+                    var result = execution.WifiAdbEnableResult ??
+                        throw new InvalidOperationException("Wi-Fi ADB enablement returned no result.");
+                    if (HasFlag(arguments, "--json"))
+                    {
+                        WriteJson(result);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Wi-Fi ADB is connected at {result.Endpoint}.");
+                    }
+
+                    return 0;
+                }
+
+            case "connect":
+                {
+                    var host = RequireOption(arguments, "--host");
+                    var execution = await executor.ExecuteAsync(
+                        OperatorCommands.ConnectWifiAdb(host, port, operatorConfirmed: true));
+                    var result = execution.WifiAdbConnectionResult ??
+                        throw new InvalidOperationException("Wi-Fi ADB connection returned no result.");
+                    if (HasFlag(arguments, "--json"))
+                    {
+                        WriteJson(result);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Connected to {result.Endpoint}.");
+                    }
+
+                    return 0;
+                }
+
+            case "disconnect":
+                {
+                    var host = RequireOption(arguments, "--host");
+                    var command = OperatorCommands.DisconnectWifiAdb(
+                        host,
+                        port,
+                        operatorConfirmed: true);
+                    var execution = await executor.ExecuteAsync(command);
+                    if (HasFlag(arguments, "--json"))
+                    {
+                        WriteJson(execution.CommandResult);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Disconnected {AndroidInput.CreateWifiEndpoint(host, port)}.");
+                    }
+
+                    return 0;
+                }
+
+            default:
+                throw new ArgumentException($"Unknown wifi action: {action}");
         }
     }
 
@@ -248,11 +357,70 @@ internal static class CliApplication
         return null;
     }
 
+    private static IReadOnlyList<string> GetOptions(string[] arguments, string name)
+    {
+        var values = new List<string>();
+        for (var index = 0; index < arguments.Length; index++)
+        {
+            if (!string.Equals(arguments[index], name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (index + 1 >= arguments.Length || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Option {name} requires a value.");
+            }
+
+            values.Add(arguments[index + 1]);
+        }
+
+        return values;
+    }
+
+    private static int GetIntegerOption(string[] arguments, string name, int defaultValue)
+    {
+        var value = GetOption(arguments, name);
+        if (value is null)
+        {
+            return defaultValue;
+        }
+
+        if (!int.TryParse(value, out var parsed))
+        {
+            throw new ArgumentException($"Option {name} requires an integer value.");
+        }
+
+        return parsed;
+    }
+
     private static bool HasFlag(string[] arguments, string name) =>
         arguments.Any(argument => string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
 
     private static void WriteJson<T>(T value) =>
         Console.WriteLine(JsonSerializer.Serialize(value, JsonOptions));
+
+    private static int WriteParallelInstallResult(ParallelApkInstallResult result, bool json)
+    {
+        if (json)
+        {
+            WriteJson(result);
+        }
+        else
+        {
+            foreach (var target in result.Targets)
+            {
+                Console.WriteLine(
+                    $"{target.Serial}\t{(target.Succeeded ? "success" : "failed")}\t{target.Summary}");
+            }
+
+            Console.WriteLine(
+                $"Installed successfully on {result.SucceededCount} of {result.Targets.Count} headsets " +
+                $"with at most {result.MaxParallelism} concurrent installs.");
+        }
+
+        return result.Succeeded ? 0 : 1;
+    }
 
     private static void WriteHelp()
     {
@@ -268,15 +436,25 @@ internal static class CliApplication
               meta-quest-file-manager apk export --serial <serial> --package <package> --output <file.apk> [--overwrite] [--json]
               meta-quest-file-manager apk install --serial <serial> --file <file.apk> [options]
               meta-quest-file-manager apk install-bundle --serial <serial> --folder <apk-folder> [options]
+              meta-quest-file-manager apk install-many --serial <host:port> --serial <host:port> --file <file.apk> [options]
+              meta-quest-file-manager apk install-bundle-many --serial <host:port> --serial <host:port> --folder <apk-folder> [options]
+              meta-quest-file-manager wifi enable --serial <usb-serial> [--port 5555] --confirm-wifi-adb
+              meta-quest-file-manager wifi connect --host <quest-ip> [--port 5555] --confirm-wifi-adb
+              meta-quest-file-manager wifi disconnect --host <quest-ip> [--port 5555] --confirm-wifi-adb
 
             Install options:
               --no-replace                 Do not reinstall over an existing package.
               --downgrade                  Allow a lower version code.
               --grant-runtime-permissions  Ask Android to grant eligible runtime permissions.
               --test-only                  Allow an APK marked testOnly.
+              --parallelism <1-16>          Bound concurrent installs (default: 4).
 
             Bundle install reads every top-level .apk file in the selected folder and
             sends the complete set through one serial-scoped adb install-multiple call.
+            Parallel routes require at least two distinct connected Wi-Fi ADB serials,
+            run one serial-scoped install per headset, and report partial failures.
+            Enabling Wi-Fi ADB requires a USB-connected authorized headset and explicit
+            operator confirmation. Connect/disconnect never reset the global ADB server.
             Split APK packages are refused by the single-APK export command.
             """);
     }

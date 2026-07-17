@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using System.Net;
+using System.Net.Sockets;
 
 namespace MetaQuestFileManager.Core;
 
@@ -55,6 +57,43 @@ public static class AdbOutputParser
                                   path.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+    public static string ParseWifiIpv4Address(string output)
+    {
+        foreach (var line in Lines(output))
+        {
+            if (!Regex.IsMatch(line, @"\bdev\s+wlan0\b", RegexOptions.CultureInvariant))
+            {
+                continue;
+            }
+
+            var match = Regex.Match(
+                line,
+                @"\bsrc\s+(?<address>\d{1,3}(?:\.\d{1,3}){3})\b",
+                RegexOptions.CultureInvariant);
+            if (!match.Success ||
+                !IPAddress.TryParse(match.Groups["address"].Value, out var address) ||
+                address.AddressFamily != AddressFamily.InterNetwork ||
+                IPAddress.IsLoopback(address))
+            {
+                continue;
+            }
+
+            return address.ToString();
+        }
+
+        throw new InvalidOperationException(
+            "The headset did not report a Wi-Fi IPv4 address on wlan0. Connect it to Wi-Fi and try again.");
+    }
+
+    public static bool IsSuccessfulWifiConnect(string output, string endpoint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(output);
+        ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+        var normalized = output.Trim();
+        return normalized.Contains($"connected to {endpoint}", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains($"already connected to {endpoint}", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static IReadOnlyList<RemoteEntry> ParseRemoteDirectory(string root, string output)
     {

@@ -26,13 +26,45 @@ public sealed class OperatorCommandTests
                     "QUEST123",
                     apkPath,
                     new ApkInstallOptions(false, true, true, true)),
-                ["apk", "install", "--serial", "QUEST123", "--file", apkPath, "--no-replace", "--downgrade", "--grant-runtime-permissions", "--test-only"])
+                ["apk", "install", "--serial", "QUEST123", "--file", apkPath, "--no-replace", "--downgrade", "--grant-runtime-permissions", "--test-only"]),
+            (OperatorCommands.EnableWifiAdb("QUEST123", 5555, operatorConfirmed: true),
+                ["wifi", "enable", "--serial", "QUEST123", "--port", "5555", "--confirm-wifi-adb"]),
+            (OperatorCommands.ConnectWifiAdb("192.0.2.42", 5555, operatorConfirmed: true),
+                ["wifi", "connect", "--host", "192.0.2.42", "--port", "5555", "--confirm-wifi-adb"]),
+            (OperatorCommands.DisconnectWifiAdb("192.0.2.42", 5555, operatorConfirmed: true),
+                ["wifi", "disconnect", "--host", "192.0.2.42", "--port", "5555", "--confirm-wifi-adb"]),
+            (OperatorCommands.InstallApkMany(
+                    ["192.0.2.42:5555", "192.0.2.43:5555"],
+                    apkPath,
+                    new ApkInstallOptions(false, true, true, true),
+                    maxParallelism: 2),
+                [
+                    "apk", "install-many",
+                    "--serial", "192.0.2.42:5555",
+                    "--serial", "192.0.2.43:5555",
+                    "--file", apkPath,
+                    "--parallelism", "2",
+                    "--no-replace", "--downgrade", "--grant-runtime-permissions", "--test-only"
+                ])
         };
 
         foreach (var (command, expected) in commands)
         {
             Assert.Equal(expected, command.CliArguments);
         }
+    }
+
+    [Fact]
+    public void WifiCommandFactoriesRequireExplicitOperatorApproval()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => OperatorCommands.EnableWifiAdb("QUEST123"));
+
+        Assert.Contains("confirmation", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Throws<InvalidOperationException>(
+            () => OperatorCommands.ConnectWifiAdb("192.0.2.42"));
+        Assert.Throws<InvalidOperationException>(
+            () => OperatorCommands.DisconnectWifiAdb("192.0.2.42"));
     }
 
     [Fact]
@@ -76,6 +108,109 @@ public sealed class OperatorCommandTests
                 ],
                 command.CliArguments);
             Assert.Equal([baseApk, languageApk, splitApk], command.ApkBundle!.ApkPaths);
+
+            var parallelCommand = OperatorCommands.InstallApkBundleMany(
+                ["192.0.2.42:5555", "192.0.2.43:5555"],
+                tempRoot,
+                new ApkInstallOptions(false, true, true, true),
+                maxParallelism: 2);
+            Assert.Equal(
+                [
+                    "apk", "install-bundle-many",
+                    "--serial", "192.0.2.42:5555",
+                    "--serial", "192.0.2.43:5555",
+                    "--folder", Path.GetFullPath(tempRoot),
+                    "--parallelism", "2",
+                    "--no-replace", "--downgrade", "--grant-runtime-permissions", "--test-only"
+                ],
+                parallelCommand.CliArguments);
+            Assert.Equal(command.ApkBundle.ApkPaths, parallelCommand.ApkBundle!.ApkPaths);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutorRunsWifiAndParallelGuiCommandsThroughTypedCliContracts()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-new-operator-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var apkPath = Path.Combine(tempRoot, "input.apk");
+        var bundlePath = Path.Combine(tempRoot, "bundle");
+        Directory.CreateDirectory(bundlePath);
+        var baseApk = Path.Combine(bundlePath, "base.apk");
+        var splitApk = Path.Combine(bundlePath, "split_config.en.apk");
+        await File.WriteAllBytesAsync(apkPath, [1]);
+        await File.WriteAllBytesAsync(baseApk, [1]);
+        await File.WriteAllBytesAsync(splitApk, [2]);
+
+        var runner = new RecordingCommandRunner((_, arguments) =>
+        {
+            if (arguments.SequenceEqual(["-s", "QUEST123", "shell", "ip route"]))
+            {
+                return Success(
+                    "192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.42 metric 303\n");
+            }
+
+            if (arguments.Count >= 2 && arguments[0] == "connect")
+            {
+                return Success($"connected to {arguments[1]}\n");
+            }
+
+            if (arguments.SequenceEqual(["devices", "-l"]))
+            {
+                return Success(
+                    "List of devices attached\n" +
+                    "192.0.2.42:5555 device model:Quest_3\n" +
+                    "192.0.2.43:5555 device model:Quest_3\n");
+            }
+
+            return Success("Success\n");
+        });
+        var executor = new OperatorCommandExecutor(new AdbClient("adb-test", runner));
+
+        try
+        {
+            var enabled = await executor.ExecuteAsync(
+                OperatorCommands.EnableWifiAdb("QUEST123", operatorConfirmed: true));
+            var connected = await executor.ExecuteAsync(
+                OperatorCommands.ConnectWifiAdb("192.0.2.43", operatorConfirmed: true));
+            await executor.ExecuteAsync(
+                OperatorCommands.DisconnectWifiAdb("192.0.2.43", operatorConfirmed: true));
+            var progress = new RecordingProgress<OperatorProgress>();
+            var single = await executor.ExecuteAsync(
+                OperatorCommands.InstallApkMany(
+                    ["192.0.2.42:5555", "192.0.2.43:5555"],
+                    apkPath,
+                    maxParallelism: 2),
+                progress: progress);
+            var bundle = await executor.ExecuteAsync(
+                OperatorCommands.InstallApkBundleMany(
+                    ["192.0.2.42:5555", "192.0.2.43:5555"],
+                    bundlePath,
+                    maxParallelism: 2));
+
+            Assert.Equal("192.0.2.42:5555", enabled.WifiAdbEnableResult!.Endpoint);
+            Assert.Equal("192.0.2.43:5555", connected.WifiAdbConnectionResult!.Endpoint);
+            Assert.True(single.ParallelApkInstallResult!.Succeeded);
+            Assert.True(bundle.ParallelApkInstallResult!.Succeeded);
+            Assert.True(progress.Values[0].IsIndeterminate);
+            Assert.Equal(2, progress.Values[^1].CompletedUnits);
+            Assert.Equal(2, progress.Values[^1].TotalUnits);
+            Assert.Contains(
+                runner.Calls,
+                static call => call.Arguments.SequenceEqual(["connect", "192.0.2.42:5555"]));
+            Assert.Contains(
+                runner.Calls,
+                static call => call.Arguments.SequenceEqual(["disconnect", "192.0.2.43:5555"]));
+            Assert.Equal(
+                2,
+                runner.Calls.Count(call => call.Arguments.Count > 2 && call.Arguments[2] == "install"));
+            Assert.Equal(
+                2,
+                runner.Calls.Count(call => call.Arguments.Count > 2 && call.Arguments[2] == "install-multiple"));
         }
         finally
         {
@@ -187,9 +322,37 @@ public sealed class OperatorCommandTests
             TimeSpan timeout,
             CancellationToken cancellationToken = default)
         {
-            Calls.Add((fileName, arguments.ToArray()));
+            lock (Calls)
+            {
+                Calls.Add((fileName, arguments.ToArray()));
+            }
             var handled = handler(fileName, arguments);
             return Task.FromResult(handled with { FileName = fileName, Arguments = arguments.ToArray() });
+        }
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        private readonly object _gate = new();
+        private readonly List<T> _values = [];
+
+        public IReadOnlyList<T> Values
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _values.ToArray();
+                }
+            }
+        }
+
+        public void Report(T value)
+        {
+            lock (_gate)
+            {
+                _values.Add(value);
+            }
         }
     }
 }

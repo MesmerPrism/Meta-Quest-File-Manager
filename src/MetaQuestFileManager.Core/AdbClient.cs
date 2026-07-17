@@ -5,6 +5,7 @@ namespace MetaQuestFileManager.Core;
 public sealed class AdbClient
 {
     private static readonly TimeSpan InspectionTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(5);
     private readonly ICommandRunner _runner;
 
@@ -194,6 +195,201 @@ public sealed class AdbClient
         return new ApkBundleInstallResult(normalizedPaths, result);
     }
 
+    public async Task<WifiAdbEnableResult> EnableWifiAdbAndConnectAsync(
+        string usbSerial,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        usbSerial = AndroidInput.RequireUsbSerial(usbSerial);
+        port = AndroidInput.RequireTcpPort(port);
+
+        progress?.Report(new OperatorProgress(
+            "wifi-address",
+            "Reading the headset Wi-Fi address…",
+            0,
+            3));
+        var addressProbe = await RunForDeviceAsync(
+            usbSerial,
+            new[] { "shell", "ip route" },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        addressProbe.EnsureSuccess("Read the headset Wi-Fi address");
+        var host = AdbOutputParser.ParseWifiIpv4Address(addressProbe.StandardOutput);
+
+        progress?.Report(new OperatorProgress(
+            "wifi-enable",
+            "Enabling Wi-Fi ADB on the selected headset…",
+            1,
+            3));
+        var tcpIpCommand = await RunForDeviceAsync(
+            usbSerial,
+            new[] { "tcpip", port.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        tcpIpCommand.EnsureSuccess($"Enable Wi-Fi ADB on TCP port {port}");
+
+        progress?.Report(new OperatorProgress(
+            "wifi-connect",
+            "Connecting to the headset over Wi-Fi…",
+            2,
+            3));
+        var connection = await ConnectWifiAdbAsync(host, port, cancellationToken).ConfigureAwait(false);
+        progress?.Report(new OperatorProgress(
+            "wifi-ready",
+            "Wi-Fi ADB is connected and ready.",
+            3,
+            3));
+        return new WifiAdbEnableResult(
+            usbSerial,
+            host,
+            port,
+            connection.Endpoint,
+            addressProbe,
+            tcpIpCommand,
+            connection);
+    }
+
+    public async Task<WifiAdbConnectionResult> ConnectWifiAdbAsync(
+        string host,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        host = AndroidInput.RequireWifiHost(host);
+        port = AndroidInput.RequireTcpPort(port);
+        var endpoint = AndroidInput.CreateWifiEndpoint(host, port);
+        progress?.Report(new OperatorProgress(
+            "wifi-connect",
+            "Connecting to the Wi-Fi ADB endpoint…",
+            0,
+            2));
+        var result = await RunAsync(
+            new[] { "connect", endpoint },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Connect to Wi-Fi ADB at {endpoint}");
+        if (!AdbOutputParser.IsSuccessfulWifiConnect(result.StandardOutput, endpoint))
+        {
+            throw new InvalidOperationException(
+                $"ADB did not confirm a connection to {endpoint}: {result.CondensedOutput}");
+        }
+
+        progress?.Report(new OperatorProgress(
+            "wifi-verify",
+            "Verifying the connected headset…",
+            1,
+            2));
+        QuestDevice? device = null;
+        for (var attempt = 0; attempt < 4 && device is null; attempt++)
+        {
+            var devices = await GetDevicesAsync(cancellationToken).ConfigureAwait(false);
+            device = devices.FirstOrDefault(candidate =>
+                string.Equals(candidate.Serial, endpoint, StringComparison.OrdinalIgnoreCase));
+            if (device is null && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (device is null)
+        {
+            throw new InvalidOperationException(
+                $"ADB reported a connection to {endpoint}, but that endpoint did not appear in the device list.");
+        }
+
+        if (!device.IsReady)
+        {
+            throw new InvalidOperationException(
+                $"Wi-Fi ADB endpoint {endpoint} is {device.State}. Approve debugging in the headset and reconnect.");
+        }
+
+        progress?.Report(new OperatorProgress(
+            "wifi-ready",
+            "Wi-Fi ADB is connected and ready.",
+            2,
+            2));
+        return new WifiAdbConnectionResult(host, port, endpoint, result, device);
+    }
+
+    public async Task<CommandResult> DisconnectWifiAdbAsync(
+        string host,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var endpoint = AndroidInput.CreateWifiEndpoint(host, port);
+        progress?.Report(new OperatorProgress(
+            "wifi-disconnect",
+            "Disconnecting the Wi-Fi ADB endpoint…",
+            0,
+            1));
+        var result = await RunAsync(
+            new[] { "disconnect", endpoint },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Disconnect Wi-Fi ADB endpoint {endpoint}");
+        progress?.Report(new OperatorProgress(
+            "wifi-disconnected",
+            "The Wi-Fi ADB endpoint is disconnected.",
+            1,
+            1));
+        return result;
+    }
+
+    public async Task<ParallelApkInstallResult> InstallApkOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        string apkPath,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var targets = ValidateWifiInstallTargets(serials);
+        var normalizedPath = ValidateInstallApkPath(apkPath);
+        var arguments = CreateInstallArguments("install", options);
+        arguments.Add(normalizedPath);
+        return await InstallOnManyWifiDevicesAsync(
+            targets,
+            [normalizedPath],
+            arguments,
+            maxParallelism,
+            cancellationToken,
+            progress).ConfigureAwait(false);
+    }
+
+    public async Task<ParallelApkInstallResult> InstallApkBundleOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        IReadOnlyList<string> apkPaths,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var targets = ValidateWifiInstallTargets(serials);
+        ArgumentNullException.ThrowIfNull(apkPaths);
+        if (apkPaths.Count < 2)
+        {
+            throw new InvalidDataException("An APK bundle install requires at least two APK files.");
+        }
+
+        var normalizedPaths = apkPaths.Select(ValidateInstallApkPath).ToArray();
+        if (normalizedPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedPaths.Length)
+        {
+            throw new InvalidDataException("The APK bundle contains the same APK path more than once.");
+        }
+
+        var arguments = CreateInstallArguments("install-multiple", options);
+        arguments.AddRange(normalizedPaths);
+        return await InstallOnManyWifiDevicesAsync(
+            targets,
+            normalizedPaths,
+            arguments,
+            maxParallelism,
+            cancellationToken,
+            progress).ConfigureAwait(false);
+    }
+
     public async Task<ApkExportResult> ExportSingleApkAsync(
         string serial,
         string packageName,
@@ -302,6 +498,90 @@ public sealed class AdbClient
         }
 
         return fullApkPath;
+    }
+
+    private static IReadOnlyList<string> ValidateWifiInstallTargets(IReadOnlyList<string> serials)
+    {
+        ArgumentNullException.ThrowIfNull(serials);
+        if (serials.Count < 2)
+        {
+            throw new ArgumentException(
+                "Parallel installation requires at least two Wi-Fi ADB targets.",
+                nameof(serials));
+        }
+
+        var targets = serials.Select(AndroidInput.RequireWifiSerial).ToArray();
+        if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
+        {
+            throw new ArgumentException(
+                "Each Wi-Fi ADB target may appear only once.",
+                nameof(serials));
+        }
+
+        return targets;
+    }
+
+    private async Task<ParallelApkInstallResult> InstallOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        IReadOnlyList<string> apkPaths,
+        IReadOnlyList<string> installArguments,
+        int maxParallelism,
+        CancellationToken cancellationToken,
+        IProgress<OperatorProgress>? progress)
+    {
+        maxParallelism = AndroidInput.RequireParallelism(maxParallelism);
+        progress?.Report(new OperatorProgress(
+            "parallel-install",
+            $"Starting installation on {serials.Count} headsets…",
+            0,
+            serials.Count));
+        using var gate = new SemaphoreSlim(Math.Min(maxParallelism, serials.Count));
+        var progressGate = new object();
+        var completedCount = 0;
+        var tasks = serials.Select(InstallOneAsync).ToArray();
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return new ParallelApkInstallResult(apkPaths.ToArray(), maxParallelism, results);
+
+        async Task<TargetApkInstallResult> InstallOneAsync(string serial)
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            TargetApkInstallResult targetResult;
+            try
+            {
+                var result = await RunForDeviceAsync(
+                    serial,
+                    installArguments,
+                    TransferTimeout,
+                    cancellationToken).ConfigureAwait(false);
+                targetResult = new TargetApkInstallResult(
+                    serial,
+                    result,
+                    result.Succeeded ? null : result.CondensedOutput);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                targetResult = new TargetApkInstallResult(serial, null, exception.Message);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            lock (progressGate)
+            {
+                completedCount++;
+                progress?.Report(new OperatorProgress(
+                    "parallel-install",
+                    $"Finished {completedCount} of {serials.Count} headset installs…",
+                    completedCount,
+                    serials.Count));
+            }
+            return targetResult;
+        }
     }
 
     private Task<CommandResult> RunAsync(

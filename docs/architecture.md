@@ -13,6 +13,9 @@ focused file and APK transfer tool, not another general Quest runtime console.
 - Browsing, pulling, and explicit pushing on shell-accessible paths.
 - Third-party package listing, single-APK export, hashing, single-APK install,
   and atomic folder-based split APK set install.
+- Explicit Wi-Fi ADB enable/connect/disconnect with no ADB daemon lifecycle.
+- Bounded parallel single-APK and complete split-set installation across
+  distinct Wi-Fi ADB endpoints, with one result per target.
 - Windows GUI and CLI projections.
 - Public CI, Pages, release archives, and boundary validation.
 
@@ -20,8 +23,9 @@ focused file and APK transfer tool, not another general Quest runtime console.
 
 - Protected app-data access, rooting, entitlement bypass, or DRM handling.
 - App data, saves, OBB, or asset-pack backup.
-- File deletion, package uninstall, clear-data, power, proximity, ADB daemon
-  lifecycle, or Wi-Fi ADB setup in the initial slice.
+- File deletion, package uninstall, clear-data, power, proximity, or ADB daemon
+  lifecycle.
+- TLS pairing-code discovery, network scanning, or persistent pairing secrets.
 - Bundled Android tools, APK catalogs, private packages, or live evidence.
 - Android and Apple host applications in the first release.
 
@@ -32,6 +36,13 @@ Android's package manager owns installed package paths. ADB owns transport.
 policy, and export completeness checks. The app and CLI adapt user intent into
 that core and do not redefine behavior.
 
+Wi-Fi enablement is a sequenced transaction: read `wlan0` from one USB serial,
+run `tcpip` on that same serial, connect one validated endpoint, and verify its
+ready device row. Connection establishment is endpoint-scoped because no ADB
+serial exists before `connect`; all subsequent device work is serial-scoped.
+Parallel installation owns only bounded orchestration. Android package-manager
+transactions remain independent per headset.
+
 ## Interfaces
 
 `ICommandRunner` is the external-process boundary. `AdbClient` exposes device,
@@ -39,6 +50,11 @@ file, and package routes. `OperatorCommand` is the shared human-operator
 contract: its immutable inputs produce both the CLI argument vector and the
 core execution request. Arguments remain structured until they reach the
 process API. Remote shell paths use one audited POSIX quoting helper.
+
+`OperatorProgress` is a separate optional projection contract. Core operations
+own honest work units; WPF displays them without changing command authority.
+Zero total units means indeterminate. CLI JSON remains a stable final result
+document and is not interleaved with transient progress events.
 
 The CLI is the contract surface for agents and future GUI, Android-host, and
 Apple-host adapters. Any new GUI action must first have an equivalent typed
@@ -50,6 +66,12 @@ test. Automation details stay out of the non-technical WPF interface.
 Every command returns exit code, standard output, standard error, and elapsed
 time. User-facing surfaces show condensed failures without hiding the ADB
 message. APK export additionally records local size and SHA-256.
+Wi-Fi routes retain the verified endpoint and device row. Parallel routes
+retain the deterministic APK path set, concurrency cap, and one command result
+or exception summary per target, including partial failures.
+The WPF footer shows active status for all operations, three owned Wi-Fi phases,
+and completed-target progress for fan-out. It does not invent byte or remaining-
+time percentages from ADB prose.
 
 Future diagnostics bundles will record tool version, command goal, selected
 serial placeholder, result class, and artifact types while keeping raw device
@@ -64,6 +86,12 @@ evidence local.
   spaces; package lists; single APKs; and split APK rejection.
 - Bundle tests prove one deterministic top-level APK set becomes one
   serial-scoped `install-multiple` invocation.
+- Wi-Fi tests prove address inspection precedes transport mutation, explicit
+  confirmation is required, and the exact connected endpoint is verified.
+- Parallel tests prove the concurrency cap, target de-duplication,
+  serial-scoped calls, complete bundle fan-out, and partial-failure retention.
+- Progress tests prove explicit indeterminate state, bounded percentage
+  derivation, ordered Wi-Fi phases, and exact parallel target completion.
 - CI builds the WPF app, runs the core tests, exercises CLI help, and scans the
   tracked public boundary.
 - Live Quest validation is a separate serial-scoped manual gate.
@@ -87,6 +115,9 @@ packages, private behavior, generated binaries, or broad runtime features.
 | Partial bundle install | Snapshot at least two top-level APK paths and pass the complete set to one `install-multiple` operation. |
 | Shell injection | Validate serial/package input and quote remote paths with one helper. |
 | Hidden device mutation | Keep mutations explicit and omit delete/uninstall from v1. |
+| Hidden Wi-Fi/daemon mutation | Require approval, scope `tcpip` to one USB serial, scope connect/disconnect to one endpoint, and never reset the ADB server. |
+| Unbounded or ambiguous fan-out | Require two distinct Wi-Fi serials, cap concurrency at 16, and retain every target result. |
+| Misleading progress | Use only owned phase/target totals; show every other ADB operation as indeterminate. |
 | Misleading backup claim | State clearly that APK export excludes data and assets. |
 | Public evidence leak | Ignore artifacts and scan tracked files before publication. |
 | Toolchain drift | Discover ADB explicitly and report the selected executable. |
@@ -94,5 +125,6 @@ packages, private behavior, generated binaries, or broad runtime features.
 ## Next Slice
 
 Add diagnostics bundles, richer remote metadata, verified folder transfer,
-and the signed guided Windows delivery lane. Split APK export remains a later
-explicit format with all parts and a manifest installed as one set.
+and optional TLS pairing only after a separate authority review. Split APK
+export remains a later explicit format with all parts and a manifest installed
+as one set.

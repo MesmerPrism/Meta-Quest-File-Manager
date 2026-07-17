@@ -52,3 +52,31 @@ partial per-file install loop.
 
 Every operation is sent with `adb -s <quest-serial>`. The app does not rely on
 ADB's implicit single-device selection.
+
+Parallel installation is not an exception to serial scope. The app validates
+at least two distinct Wi-Fi ADB serials, bounds concurrent work, and launches
+one independently scoped `install` or `install-multiple` request per headset.
+Every target receives a result even when another target fails.
+
+## Wi-Fi ADB
+
+Wi-Fi ADB still requires Developer Mode and prior in-headset authorization.
+The reviewed enable route starts from one selected, ready USB headset:
+
+1. inspect `ip route` on that serial and select the non-loopback `wlan0` IPv4
+   source address;
+2. run `tcpip <port>` on that same serial;
+3. connect only the validated `<quest-ip>:<port>` endpoint;
+4. require that exact endpoint to appear ready in device discovery.
+
+The WPF app asks for confirmation before enable, connect, and disconnect. The
+CLI requires `--confirm-wifi-adb`, which an agent may use only after operator
+approval for the exact target. Connect and disconnect are endpoint-scoped
+because they create or remove the serial itself. They do not reset, restart,
+or otherwise manage the global ADB server.
+
+The first Wi-Fi slice does not implement TLS pairing codes, subnet scanning,
+or credential storage. A connection can disappear after a headset reboot,
+network change, debugging timeout, or authorization revocation. See
+[Wi-Fi ADB and parallel installation](wifi-adb-and-parallel-install.md) for the
+full workflow and validation contract.

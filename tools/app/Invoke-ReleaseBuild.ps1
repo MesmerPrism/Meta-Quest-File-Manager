@@ -84,6 +84,13 @@ if ($LASTEXITCODE -ne 0) { throw 'MSIX package build failed.' }
     -TimestampUrl $SetupTimestampUrl
 if ($LASTEXITCODE -ne 0) { throw 'Guided setup publish failed.' }
 
+& (Join-Path $PSScriptRoot 'Test-BrandAssets.ps1') -Executable @(
+    (Join-Path $appPublish 'MetaQuestFileManager.exe'),
+    (Join-Path $cliPublish 'meta-quest-file-manager.exe'),
+    (Join-Path $OutputDirectory 'MetaQuestFileManager-Setup.exe')
+)
+if ($LASTEXITCODE -ne 0) { throw 'Brand asset validation failed.' }
+
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') `
     -ReleaseDirectory $OutputDirectory `
     -ExpectedPublisher $Publisher `

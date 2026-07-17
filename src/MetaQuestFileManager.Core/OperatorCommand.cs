@@ -12,7 +12,12 @@ public enum OperatorCommandKind
     ListPackages,
     ExportApk,
     InstallApk,
-    InstallApkBundle
+    InstallApkBundle,
+    EnableWifiAdb,
+    ConnectWifiAdb,
+    DisconnectWifiAdb,
+    InstallApkMany,
+    InstallApkBundleMany
 }
 
 public sealed class OperatorCommand
@@ -26,6 +31,11 @@ public sealed class OperatorCommand
         string? packageName = null,
         ApkInstallOptions? installOptions = null,
         ApkBundleInput? apkBundle = null,
+        IReadOnlyList<string>? serials = null,
+        string? wifiHost = null,
+        int wifiPort = 5555,
+        int maxParallelism = 4,
+        bool operatorConfirmed = false,
         bool overwrite = false)
     {
         Kind = kind;
@@ -36,6 +46,13 @@ public sealed class OperatorCommand
         PackageName = packageName;
         InstallOptions = installOptions;
         ApkBundle = apkBundle;
+        Serials = serials is null
+            ? null
+            : new ReadOnlyCollection<string>(serials.ToArray());
+        WifiHost = wifiHost;
+        WifiPort = wifiPort;
+        MaxParallelism = maxParallelism;
+        OperatorConfirmed = operatorConfirmed;
         Overwrite = overwrite;
     }
 
@@ -54,6 +71,16 @@ public sealed class OperatorCommand
     public ApkInstallOptions? InstallOptions { get; }
 
     public ApkBundleInput? ApkBundle { get; }
+
+    public IReadOnlyList<string>? Serials { get; }
+
+    public string? WifiHost { get; }
+
+    public int WifiPort { get; }
+
+    public int MaxParallelism { get; }
+
+    public bool OperatorConfirmed { get; }
 
     public bool Overwrite { get; }
 
@@ -78,6 +105,66 @@ public static class OperatorCommands
 {
     public static OperatorCommand DiscoverDevices() =>
         new(OperatorCommandKind.DiscoverDevices, ["devices"]);
+
+    public static OperatorCommand EnableWifiAdb(
+        string usbSerial,
+        int port = 5555,
+        bool operatorConfirmed = false)
+    {
+        RequireWifiApproval(operatorConfirmed);
+        usbSerial = AndroidInput.RequireUsbSerial(usbSerial);
+        port = AndroidInput.RequireTcpPort(port);
+        return new OperatorCommand(
+            OperatorCommandKind.EnableWifiAdb,
+            [
+                "wifi", "enable", "--serial", usbSerial,
+                "--port", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--confirm-wifi-adb"
+            ],
+            serial: usbSerial,
+            wifiPort: port,
+            operatorConfirmed: true);
+    }
+
+    public static OperatorCommand ConnectWifiAdb(
+        string host,
+        int port = 5555,
+        bool operatorConfirmed = false)
+    {
+        RequireWifiApproval(operatorConfirmed);
+        host = AndroidInput.RequireWifiHost(host);
+        port = AndroidInput.RequireTcpPort(port);
+        return new OperatorCommand(
+            OperatorCommandKind.ConnectWifiAdb,
+            [
+                "wifi", "connect", "--host", host,
+                "--port", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--confirm-wifi-adb"
+            ],
+            wifiHost: host,
+            wifiPort: port,
+            operatorConfirmed: true);
+    }
+
+    public static OperatorCommand DisconnectWifiAdb(
+        string host,
+        int port = 5555,
+        bool operatorConfirmed = false)
+    {
+        RequireWifiApproval(operatorConfirmed);
+        host = AndroidInput.RequireWifiHost(host);
+        port = AndroidInput.RequireTcpPort(port);
+        return new OperatorCommand(
+            OperatorCommandKind.DisconnectWifiAdb,
+            [
+                "wifi", "disconnect", "--host", host,
+                "--port", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--confirm-wifi-adb"
+            ],
+            wifiHost: host,
+            wifiPort: port,
+            operatorConfirmed: true);
+    }
 
     public static OperatorCommand ListFiles(string serial, string remotePath)
     {
@@ -236,6 +323,122 @@ public static class OperatorCommands
             installOptions: options,
             apkBundle: bundle);
     }
+
+    public static OperatorCommand InstallApkMany(
+        IReadOnlyList<string> serials,
+        string apkPath,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4)
+    {
+        var targets = ValidateWifiTargets(serials);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apkPath);
+        var fullApkPath = Path.GetFullPath(apkPath);
+        options ??= new ApkInstallOptions();
+        maxParallelism = AndroidInput.RequireParallelism(maxParallelism);
+        var arguments = new List<string> { "apk", "install-many" };
+        AddSerialArguments(arguments, targets);
+        arguments.AddRange(
+        [
+            "--file", fullApkPath,
+            "--parallelism", maxParallelism.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        ]);
+        AddInstallOptionArguments(arguments, options);
+        return new OperatorCommand(
+            OperatorCommandKind.InstallApkMany,
+            arguments,
+            localPath: fullApkPath,
+            installOptions: options,
+            serials: targets,
+            maxParallelism: maxParallelism);
+    }
+
+    public static OperatorCommand InstallApkBundleMany(
+        IReadOnlyList<string> serials,
+        string folderPath,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4)
+    {
+        var targets = ValidateWifiTargets(serials);
+        var bundle = ApkBundleInput.FromFolder(folderPath);
+        options ??= new ApkInstallOptions();
+        maxParallelism = AndroidInput.RequireParallelism(maxParallelism);
+        var arguments = new List<string> { "apk", "install-bundle-many" };
+        AddSerialArguments(arguments, targets);
+        arguments.AddRange(
+        [
+            "--folder", bundle.FolderPath,
+            "--parallelism", maxParallelism.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        ]);
+        AddInstallOptionArguments(arguments, options);
+        return new OperatorCommand(
+            OperatorCommandKind.InstallApkBundleMany,
+            arguments,
+            localPath: bundle.FolderPath,
+            installOptions: options,
+            apkBundle: bundle,
+            serials: targets,
+            maxParallelism: maxParallelism);
+    }
+
+    private static IReadOnlyList<string> ValidateWifiTargets(IReadOnlyList<string> serials)
+    {
+        ArgumentNullException.ThrowIfNull(serials);
+        if (serials.Count < 2)
+        {
+            throw new ArgumentException(
+                "Select at least two connected Wi-Fi ADB headsets.",
+                nameof(serials));
+        }
+
+        var targets = serials.Select(AndroidInput.RequireWifiSerial).ToArray();
+        if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
+        {
+            throw new ArgumentException("Each Wi-Fi headset may be selected only once.", nameof(serials));
+        }
+
+        return targets;
+    }
+
+    private static void AddSerialArguments(List<string> arguments, IReadOnlyList<string> serials)
+    {
+        foreach (var serial in serials)
+        {
+            arguments.Add("--serial");
+            arguments.Add(serial);
+        }
+    }
+
+    private static void AddInstallOptionArguments(List<string> arguments, ApkInstallOptions options)
+    {
+        if (!options.ReplaceExisting)
+        {
+            arguments.Add("--no-replace");
+        }
+
+        if (options.AllowDowngrade)
+        {
+            arguments.Add("--downgrade");
+        }
+
+        if (options.GrantRuntimePermissions)
+        {
+            arguments.Add("--grant-runtime-permissions");
+        }
+
+        if (options.AllowTestPackages)
+        {
+            arguments.Add("--test-only");
+        }
+    }
+
+    private static void RequireWifiApproval(bool operatorConfirmed)
+    {
+        if (!operatorConfirmed)
+        {
+            throw new InvalidOperationException(
+                "Wi-Fi ADB changes require explicit operator confirmation.");
+        }
+    }
 }
 
 public sealed record OperatorExecutionResult(
@@ -245,7 +448,10 @@ public sealed record OperatorExecutionResult(
     IReadOnlyList<string>? Packages = null,
     CommandResult? CommandResult = null,
     ApkExportResult? ApkExportResult = null,
-    ApkBundleInstallResult? ApkBundleInstallResult = null);
+    ApkBundleInstallResult? ApkBundleInstallResult = null,
+    WifiAdbEnableResult? WifiAdbEnableResult = null,
+    WifiAdbConnectionResult? WifiAdbConnectionResult = null,
+    ParallelApkInstallResult? ParallelApkInstallResult = null);
 
 public sealed class OperatorCommandExecutor(AdbClient client)
 {
@@ -253,9 +459,15 @@ public sealed class OperatorCommandExecutor(AdbClient client)
 
     public async Task<OperatorExecutionResult> ExecuteAsync(
         OperatorCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(command);
+        progress?.Report(new OperatorProgress(
+            command.Kind.ToString(),
+            StartingMessage(command.Kind),
+            0,
+            0));
         switch (command.Kind)
         {
             case OperatorCommandKind.DiscoverDevices:
@@ -330,6 +542,62 @@ public sealed class OperatorCommandExecutor(AdbClient client)
                         ApkBundleInstallResult: result);
                 }
 
+            case OperatorCommandKind.EnableWifiAdb:
+                EnsureWifiApproval(command);
+                return new OperatorExecutionResult(
+                    command,
+                    WifiAdbEnableResult: await _client.EnableWifiAdbAndConnectAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        command.WifiPort,
+                        cancellationToken,
+                        progress).ConfigureAwait(false));
+
+            case OperatorCommandKind.ConnectWifiAdb:
+                EnsureWifiApproval(command);
+                return new OperatorExecutionResult(
+                    command,
+                    WifiAdbConnectionResult: await _client.ConnectWifiAdbAsync(
+                        Require(command.WifiHost, nameof(command.WifiHost)),
+                        command.WifiPort,
+                        cancellationToken,
+                        progress).ConfigureAwait(false));
+
+            case OperatorCommandKind.DisconnectWifiAdb:
+                EnsureWifiApproval(command);
+                return new OperatorExecutionResult(
+                    command,
+                    CommandResult: await _client.DisconnectWifiAdbAsync(
+                        Require(command.WifiHost, nameof(command.WifiHost)),
+                        command.WifiPort,
+                        cancellationToken,
+                        progress).ConfigureAwait(false));
+
+            case OperatorCommandKind.InstallApkMany:
+                return new OperatorExecutionResult(
+                    command,
+                    ParallelApkInstallResult: await _client.InstallApkOnManyWifiDevicesAsync(
+                        Require(command.Serials, nameof(command.Serials)),
+                        Require(command.LocalPath, nameof(command.LocalPath)),
+                        command.InstallOptions,
+                        command.MaxParallelism,
+                        cancellationToken,
+                        progress).ConfigureAwait(false));
+
+            case OperatorCommandKind.InstallApkBundleMany:
+                {
+                    var bundle = command.ApkBundle ??
+                        throw new InvalidOperationException("The operator command is missing its APK bundle.");
+                    return new OperatorExecutionResult(
+                        command,
+                        ParallelApkInstallResult: await _client.InstallApkBundleOnManyWifiDevicesAsync(
+                            Require(command.Serials, nameof(command.Serials)),
+                            bundle.ApkPaths,
+                            command.InstallOptions,
+                            command.MaxParallelism,
+                            cancellationToken,
+                            progress).ConfigureAwait(false));
+                }
+
             default:
                 throw new ArgumentOutOfRangeException(nameof(command), command.Kind, "Unknown operator command.");
         }
@@ -339,6 +607,38 @@ public sealed class OperatorCommandExecutor(AdbClient client)
         !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new InvalidOperationException($"The operator command is missing {name}.");
+
+    private static IReadOnlyList<string> Require(IReadOnlyList<string>? value, string name) =>
+        value is { Count: > 0 }
+            ? value
+            : throw new InvalidOperationException($"The operator command is missing {name}.");
+
+    private static void EnsureWifiApproval(OperatorCommand command)
+    {
+        if (!command.OperatorConfirmed)
+        {
+            throw new InvalidOperationException(
+                "Wi-Fi ADB changes require explicit operator confirmation.");
+        }
+    }
+
+    private static string StartingMessage(OperatorCommandKind kind) => kind switch
+    {
+        OperatorCommandKind.DiscoverDevices => "Looking for authorized headsets…",
+        OperatorCommandKind.ListFiles => "Listing the device folder…",
+        OperatorCommandKind.PullFile => "Copying the selected file from the headset…",
+        OperatorCommandKind.PushFile => "Copying the selected file to the headset…",
+        OperatorCommandKind.ListPackages => "Loading third-party packages…",
+        OperatorCommandKind.ExportApk => "Exporting and hashing the installed APK…",
+        OperatorCommandKind.InstallApk => "Installing the APK…",
+        OperatorCommandKind.InstallApkBundle => "Installing the complete APK package set…",
+        OperatorCommandKind.EnableWifiAdb => "Preparing Wi-Fi ADB…",
+        OperatorCommandKind.ConnectWifiAdb => "Connecting to Wi-Fi ADB…",
+        OperatorCommandKind.DisconnectWifiAdb => "Disconnecting Wi-Fi ADB…",
+        OperatorCommandKind.InstallApkMany => "Preparing the parallel APK install…",
+        OperatorCommandKind.InstallApkBundleMany => "Preparing the parallel APK bundle install…",
+        _ => "Working…"
+    };
 }
 
 internal static partial class PowerShellCliFormatter

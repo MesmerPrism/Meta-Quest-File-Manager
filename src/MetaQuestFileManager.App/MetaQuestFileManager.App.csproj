@@ -6,6 +6,7 @@
     <AssemblyName>MetaQuestFileManager</AssemblyName>
     <Product>Meta Quest File Manager</Product>
     <AssemblyTitle>Meta Quest File Manager</AssemblyTitle>
+    <ApplicationIcon>..\..\assets\branding\MetaQuestFileManager.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Collections.Concurrent;
 using MetaQuestFileManager.Core;
 
 namespace MetaQuestFileManager.Core.Tests;
@@ -156,6 +157,135 @@ public sealed class AdbClientTests
         Assert.Single(runner.Calls);
     }
 
+    [Fact]
+    public async Task EnableWifiAdb_ReadsAddressBeforeMutationAndConnectsExactEndpoint()
+    {
+        var runner = new RecordingCommandRunner((_, arguments) =>
+        {
+            if (arguments.SequenceEqual(["-s", "QUEST123", "shell", "ip route"]))
+            {
+                return Success(
+                    "192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.42 metric 303\n");
+            }
+
+            if (arguments.SequenceEqual(["-s", "QUEST123", "tcpip", "5555"]))
+            {
+                return Success("restarting in TCP mode port: 5555\n");
+            }
+
+            if (arguments.SequenceEqual(["connect", "192.0.2.42:5555"]))
+            {
+                return Success("connected to 192.0.2.42:5555\n");
+            }
+
+            if (arguments.SequenceEqual(["devices", "-l"]))
+            {
+                return Success(
+                    "List of devices attached\n192.0.2.42:5555 device product:eureka model:Quest_3\n");
+            }
+
+            return new CommandResult("adb-test", arguments, 1, string.Empty, "unexpected command", TimeSpan.Zero);
+        });
+        var client = new AdbClient("adb-test", runner);
+        var progress = new RecordingProgress<OperatorProgress>();
+
+        var result = await client.EnableWifiAdbAndConnectAsync(
+            "QUEST123",
+            progress: progress);
+
+        Assert.Equal("192.0.2.42:5555", result.Endpoint);
+        Assert.Equal([0, 1, 2, 3], progress.Values.Select(static value => value.CompletedUnits));
+        Assert.All(progress.Values, static value => Assert.Equal(3, value.TotalUnits));
+        Assert.Equal(
+            [
+                new[] { "-s", "QUEST123", "shell", "ip route" },
+                new[] { "-s", "QUEST123", "tcpip", "5555" },
+                new[] { "connect", "192.0.2.42:5555" },
+                new[] { "devices", "-l" }
+            ],
+            runner.Calls.Select(static call => call.Arguments));
+    }
+
+    [Fact]
+    public async Task ParallelInstall_IsBoundedSerialScopedAndPreservesPartialFailure()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"mqfm-many-{Guid.NewGuid():N}.apk");
+        await File.WriteAllBytesAsync(tempFile, [1, 2, 3]);
+        var runner = new ParallelCommandRunner("192.0.2.12:5555");
+        var client = new AdbClient("adb-test", runner);
+        var progress = new RecordingProgress<OperatorProgress>();
+
+        try
+        {
+            var result = await client.InstallApkOnManyWifiDevicesAsync(
+                [
+                    "192.0.2.10:5555",
+                    "192.0.2.11:5555",
+                    "192.0.2.12:5555",
+                    "192.0.2.13:5555"
+                ],
+                tempFile,
+                new ApkInstallOptions(ReplaceExisting: true),
+                maxParallelism: 2,
+                progress: progress);
+
+            Assert.Equal(2, runner.MaxObservedConcurrency);
+            Assert.Equal(3, result.SucceededCount);
+            Assert.Equal(1, result.FailedCount);
+            Assert.Equal(0, progress.Values[0].CompletedUnits);
+            Assert.Equal(4, progress.Values[^1].CompletedUnits);
+            Assert.All(progress.Values, static value => Assert.Equal(4, value.TotalUnits));
+            Assert.Equal(
+                "192.0.2.12:5555",
+                Assert.Single(result.Targets, static target => !target.Succeeded).Serial);
+            Assert.All(
+                runner.Calls,
+                call =>
+                {
+                    Assert.Equal("-s", call[0]);
+                    Assert.Equal("install", call[2]);
+                    Assert.Equal(Path.GetFullPath(tempFile), call[^1]);
+                });
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ParallelBundleInstall_SendsCompleteSetToEveryWifiTarget()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-many-bundle-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var baseApk = Path.Combine(tempRoot, "base.apk");
+        var splitApk = Path.Combine(tempRoot, "split_config.en.apk");
+        await File.WriteAllBytesAsync(baseApk, [1]);
+        await File.WriteAllBytesAsync(splitApk, [2]);
+        var runner = new ParallelCommandRunner();
+        var client = new AdbClient("adb-test", runner);
+
+        try
+        {
+            var result = await client.InstallApkBundleOnManyWifiDevicesAsync(
+                ["192.0.2.20:5555", "192.0.2.21:5555"],
+                [baseApk, splitApk],
+                maxParallelism: 2);
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(2, runner.Calls.Count);
+            Assert.All(
+                runner.Calls,
+                call => Assert.Equal(
+                    ["install-multiple", "-r", Path.GetFullPath(baseApk), Path.GetFullPath(splitApk)],
+                    call.Skip(2)));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     private static CommandResult Success(string output) =>
         new("adb-test", Array.Empty<string>(), 0, output, string.Empty, TimeSpan.Zero);
 
@@ -173,6 +303,78 @@ public sealed class AdbClientTests
             Calls.Add((fileName, arguments.ToArray()));
             var handled = handler(fileName, arguments);
             return Task.FromResult(handled with { FileName = fileName, Arguments = arguments.ToArray() });
+        }
+    }
+
+    private sealed class ParallelCommandRunner(string? failingSerial = null) : ICommandRunner
+    {
+        private int _active;
+        private int _maxObservedConcurrency;
+
+        public ConcurrentBag<IReadOnlyList<string>> Calls { get; } = [];
+
+        public int MaxObservedConcurrency => Volatile.Read(ref _maxObservedConcurrency);
+
+        public async Task<CommandResult> RunAsync(
+            string fileName,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(arguments.ToArray());
+            var active = Interlocked.Increment(ref _active);
+            while (true)
+            {
+                var maximum = Volatile.Read(ref _maxObservedConcurrency);
+                if (active <= maximum ||
+                    Interlocked.CompareExchange(ref _maxObservedConcurrency, active, maximum) == maximum)
+                {
+                    break;
+                }
+            }
+
+            try
+            {
+                await Task.Delay(75, cancellationToken);
+                var failed = failingSerial is not null &&
+                    string.Equals(arguments[1], failingSerial, StringComparison.Ordinal);
+                return new CommandResult(
+                    fileName,
+                    arguments.ToArray(),
+                    failed ? 1 : 0,
+                    failed ? string.Empty : "Success\n",
+                    failed ? "Failure [INSTALL_FAILED_TEST]" : string.Empty,
+                    TimeSpan.FromMilliseconds(75));
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+            }
+        }
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        private readonly object _gate = new();
+        private readonly List<T> _values = [];
+
+        public IReadOnlyList<T> Values
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _values.ToArray();
+                }
+            }
+        }
+
+        public void Report(T value)
+        {
+            lock (_gate)
+            {
+                _values.Add(value);
+            }
         }
     }
 }

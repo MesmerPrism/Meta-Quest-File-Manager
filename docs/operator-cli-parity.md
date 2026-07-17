@@ -29,6 +29,11 @@ exact tool selection is part of the test.
 | Export selected package | `apk export` |
 | Install on selected headset | `apk install` |
 | Install APK bundle | `apk install-bundle` |
+| Enable and connect Wi-Fi ADB | `wifi enable` |
+| Connect an enabled Wi-Fi headset | `wifi connect` |
+| Disconnect selected Wi-Fi headset | `wifi disconnect` |
+| Install one APK on checked Wi-Fi headsets | `apk install-many` |
+| Install one APK bundle on checked Wi-Fi headsets | `apk install-bundle-many` |
 
 Example shapes use placeholders rather than live device or local identities:
 
@@ -40,11 +45,27 @@ Example shapes use placeholders rather than live device or local identities:
 & '.\meta-quest-file-manager.exe' apk export --serial <quest-serial> --package <package> --output <local-apk> --overwrite --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install --serial <quest-serial> --file <local-apk> --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install-bundle --serial <quest-serial> --folder <apk-folder> --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json --adb <path-to-adb>
 ```
 
 PowerShell rendering single-quotes paths when required and doubles embedded
 single quotes. ADB receives an argument list through `ProcessStartInfo` rather
 than a shell command string.
+
+The WPF confirmation dialog is projected as `--confirm-wifi-adb`. The CLI
+rejects every Wi-Fi state change when that operator-approval marker is absent.
+Agents must not add the flag without approval for the exact target. Parallel
+commands repeat `--serial` once per checked headset and return all per-target
+results even when the process exit status is nonzero.
+
+The WPF footer's progress bar is a transient projection of the same executor,
+not a separate operation. CLI arguments therefore remain identical. Machine-
+readable CLI output stays one final JSON document; agents use its per-target
+results rather than scraping GUI animation or mixed progress lines.
 
 ## Acceptance
 
@@ -55,3 +76,8 @@ top-level APK is sent in one deterministic `install-multiple` call. Live
 validation then runs the same CLI routes against one explicitly selected
 authorized headset; raw serials, package names, APKs, and evidence remain local
 and ignored.
+
+Wi-Fi and parallel acceptance additionally proves address inspection occurs
+before `tcpip`, no daemon lifecycle command is emitted, each install remains
+serial-scoped, concurrency is bounded, duplicate targets are rejected, and
+partial failures remain visible.

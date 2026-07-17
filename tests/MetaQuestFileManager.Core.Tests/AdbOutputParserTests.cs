@@ -60,4 +60,53 @@ public sealed class AdbOutputParserTests
 
         Assert.Equal("'/sdcard/It'\\''s here'", quoted);
     }
+
+    [Fact]
+    public void ParseWifiIpv4Address_UsesWlanRouteSourceAddress()
+    {
+        const string output = """
+            192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.42 metric 303
+            198.51.100.0/24 dev p2p0 proto kernel scope link src 198.51.100.8
+            """;
+
+        var address = AdbOutputParser.ParseWifiIpv4Address(output);
+
+        Assert.Equal("192.0.2.42", address);
+    }
+
+    [Fact]
+    public void ParseWifiIpv4Address_RejectsMissingWlanAddress()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => AdbOutputParser.ParseWifiIpv4Address(
+                "198.51.100.0/24 dev p2p0 proto kernel scope link src 198.51.100.8"));
+
+        Assert.Contains("wlan0", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("192.0.2.42:5555", true)]
+    [InlineData("quest-lab.local:5555", true)]
+    [InlineData("QUEST123", false)]
+    [InlineData("127.0.0.1:5555", false)]
+    public void WifiEndpointParsing_DistinguishesNetworkAdbSerials(string value, bool expected)
+    {
+        var parsed = AndroidInput.TryParseWifiEndpoint(value, out _, out _);
+
+        Assert.Equal(expected, parsed);
+    }
+
+    [Fact]
+    public void OperatorProgress_DerivesOnlyBoundedHonestPercentages()
+    {
+        var determinate = new OperatorProgress("install", "One finished", 1, 4);
+        var overComplete = new OperatorProgress("install", "Finished", 5, 4);
+        var indeterminate = new OperatorProgress("copy", "Copying", 0, 0);
+
+        Assert.False(determinate.IsIndeterminate);
+        Assert.Equal(25, determinate.Percentage);
+        Assert.Equal(100, overComplete.Percentage);
+        Assert.True(indeterminate.IsIndeterminate);
+        Assert.Equal(0, indeterminate.Percentage);
+    }
 }
