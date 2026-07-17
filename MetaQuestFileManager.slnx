@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MetaQuestFileManager.App/MetaQuestFileManager.App.csproj" />
+    <Project Path="src/MetaQuestFileManager.Cli/MetaQuestFileManager.Cli.csproj" />
+    <Project Path="src/MetaQuestFileManager.Core/MetaQuestFileManager.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MetaQuestFileManager.Core.Tests/MetaQuestFileManager.Core.Tests.csproj" />
+  </Folder>
+</Solution>
