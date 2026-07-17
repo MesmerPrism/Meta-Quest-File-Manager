@@ -23,10 +23,12 @@
         <h1>Move files and APKs between Windows and Quest.</h1>
         <p>Browse ADB-accessible headset storage, install your own APKs, and export sideloaded single-APK apps with a SHA-256 checksum.</p>
         <div class="actions">
-          <a class="primary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.zip">Download Windows preview</a>
+          <a class="primary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">Guided Windows setup</a>
+          <a class="secondary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.appinstaller">Manual package install</a>
+          <a class="secondary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.zip">Portable ZIP</a>
           <a class="secondary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases">View releases</a>
         </div>
-        <p class="release-note">The first public release is in development. Until it is published, build from source.</p>
+        <p class="release-note">The guided helper and MSIX are signed with a self-issued certificate. Windows asks for administrator approval and explicit certificate trust. Smart App Control may still require the manual package or portable ZIP route.</p>
       </div>
       <div class="summary" aria-label="Product scope">
         <h2>Focused first release</h2>
@@ -34,6 +36,7 @@
           <li>Explicit headset selection</li>
           <li>File list, pull, and push</li>
           <li>User-supplied APK install</li>
+          <li>Complete APK bundle install</li>
           <li>Single-APK export and hashing</li>
           <li>Matching GUI and CLI routes</li>
         </ul>
@@ -49,7 +52,7 @@
         </article>
         <article>
           <h3>Install your APKs</h3>
-          <p>Choose reinstall, downgrade, runtime-permission, and test-package options before installation.</p>
+          <p>Install one APK or choose a complete folder of base and split APKs. Reinstall, downgrade, runtime-permission, and test-package options stay explicit.</p>
         </article>
         <article>
           <h3>Retrieve sideloaded apps</h3>

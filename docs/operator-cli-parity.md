@@ -1,9 +1,10 @@
 # GUI And CLI Operator Parity
 
 Every device operation in the WPF app is represented by one immutable
-`OperatorCommand` in the core library. The WPF button executes that command and
-shows its PowerShell rendering; the CLI parses the displayed arguments back
-into the same command factory and sends it through the same executor.
+`OperatorCommand` in the core library. The WPF button and CLI both construct
+that command through the same factory and send it through the same executor.
+The CLI is intended for agents and automation, so command text is deliberately
+not projected into the non-technical WPF interface.
 
 The Windows release places these programs beside each other:
 
@@ -12,10 +13,9 @@ MetaQuestFileManager.exe
 meta-quest-file-manager.exe
 ```
 
-The command shown at the bottom of the WPF window can therefore be copied into
-PowerShell without translating GUI labels into a different automation model.
-It includes the selected ADB executable so tool discovery cannot silently
-select a different binary.
+The CLI can be invoked directly in PowerShell without translating GUI labels
+into a different automation model. Agents can include `--adb <path>` when an
+exact tool selection is part of the test.
 
 ## Operation Map
 
@@ -28,6 +28,7 @@ select a different binary.
 | Refresh packages | `apk list` |
 | Export selected package | `apk export` |
 | Install on selected headset | `apk install` |
+| Install APK bundle | `apk install-bundle` |
 
 Example shapes use placeholders rather than live device or local identities:
 
@@ -38,6 +39,7 @@ Example shapes use placeholders rather than live device or local identities:
 & '.\meta-quest-file-manager.exe' apk list --serial <quest-serial> --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk export --serial <quest-serial> --package <package> --output <local-apk> --overwrite --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install --serial <quest-serial> --file <local-apk> --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' apk install-bundle --serial <quest-serial> --folder <apk-folder> --adb <path-to-adb>
 ```
 
 PowerShell rendering single-quotes paths when required and doubles embedded
@@ -48,6 +50,8 @@ than a shell command string.
 
 `OperatorCommandTests` must cover the exact CLI argument vector for every WPF
 operation, PowerShell quoting, and execution through the shared dispatcher into
-serial-scoped ADB calls. Live validation then runs the same CLI routes against
-one explicitly selected authorized headset; raw serials, package names, APKs,
-and evidence remain local and ignored.
+serial-scoped ADB calls. Bundle validation additionally proves that every
+top-level APK is sent in one deterministic `install-multiple` call. Live
+validation then runs the same CLI routes against one explicitly selected
+authorized headset; raw serials, package names, APKs, and evidence remain local
+and ignored.

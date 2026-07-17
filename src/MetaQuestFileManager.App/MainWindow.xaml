@@ -11,7 +11,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="76" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="82" />
             <RowDefinition Height="38" />
         </Grid.RowDefinitions>
 
@@ -141,40 +140,65 @@
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="8">
-                        <StackPanel>
-                            <TextBlock FontFamily="Bahnschrift SemiBold"
-                                       FontSize="18"
-                                       Text="Install an APK" />
-                            <TextBlock Margin="0,6,0,18"
-                                       Foreground="{StaticResource MutedTextBrush}"
-                                       TextWrapping="Wrap"
-                                       Text="Choose an APK you are allowed to install. Android reports signing, version, ABI, and package conflicts." />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock FontFamily="Bahnschrift SemiBold"
+                                           FontSize="18"
+                                           Text="Install APKs" />
+                                <TextBlock Margin="0,6,0,18"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Text="Install one APK or one complete base-and-split package set. Android reports signing, version, ABI, and package conflicts." />
 
-                            <TextBlock Margin="0,0,0,5" Text="APK file" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="InstallApkPathBox" Grid.Column="0" />
-                                <Button Grid.Column="1"
-                                        Margin="8,0,0,0"
-                                        Style="{StaticResource SecondaryButton}"
-                                        Click="OnBrowseInstallApk"
-                                        Content="Browse…" />
-                            </Grid>
+                                <TextBlock Margin="0,0,0,5" Text="Single APK file" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="InstallApkPathBox" Grid.Column="0" />
+                                    <Button Grid.Column="1"
+                                            Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnBrowseInstallApk"
+                                            Content="Browse…" />
+                                </Grid>
+                                <Button Margin="0,12,0,0"
+                                        HorizontalAlignment="Left"
+                                        Click="OnInstallApk"
+                                        Content="Install single APK" />
 
-                            <TextBlock Margin="0,18,0,5" Text="Install options" />
-                            <CheckBox x:Name="ReplaceExistingBox" IsChecked="True" Content="Reinstall over an existing package" />
-                            <CheckBox x:Name="AllowDowngradeBox" Content="Allow version downgrade" />
-                            <CheckBox x:Name="GrantPermissionsBox" Content="Grant eligible runtime permissions" />
-                            <CheckBox x:Name="AllowTestPackageBox" Content="Allow APKs marked test-only" />
+                                <Separator Margin="0,20,0,18" />
 
-                            <Button Margin="0,18,0,0"
-                                    HorizontalAlignment="Left"
-                                    Click="OnInstallApk"
-                                    Content="Install on selected headset" />
-                        </StackPanel>
+                                <TextBlock Margin="0,0,0,5" Text="APK bundle folder" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="InstallApkBundlePathBox" Grid.Column="0" />
+                                    <Button Grid.Column="1"
+                                            Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnBrowseInstallApkBundle"
+                                            Content="Browse…" />
+                                </Grid>
+                                <TextBlock Margin="0,6,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Text="Every top-level .apk file is installed together as one package set. Subfolders are ignored." />
+                                <Button Margin="0,12,0,0"
+                                        HorizontalAlignment="Left"
+                                        Click="OnInstallApkBundle"
+                                        Content="Install APK bundle" />
+
+                                <TextBlock Margin="0,20,0,5" Text="Install options" />
+                                <CheckBox x:Name="ReplaceExistingBox" IsChecked="True" Content="Reinstall over an existing package" />
+                                <CheckBox x:Name="AllowDowngradeBox" Content="Allow version downgrade" />
+                                <CheckBox x:Name="GrantPermissionsBox" Content="Grant eligible runtime permissions" />
+                                <CheckBox x:Name="AllowTestPackageBox" Content="Allow APKs marked test-only" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
 
                     <Border Grid.Column="2"
@@ -203,7 +227,7 @@
                                            VerticalAlignment="Center"
                                            Foreground="{StaticResource MutedTextBrush}"
                                            TextWrapping="Wrap"
-                                           Text="Third-party packages only. Split installs are refused in this release." />
+                                           Text="Third-party packages only. Split packages cannot be exported yet." />
                                 <Button Grid.Column="1"
                                         Margin="10,0,0,0"
                                         Style="{StaticResource SecondaryButton}"
@@ -226,51 +250,6 @@
         </TabControl>
 
         <Border Grid.Row="2"
-                Background="{StaticResource SurfaceBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="0,1,0,0">
-            <Grid Margin="20,10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,0,0,5">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               FontFamily="Bahnschrift SemiBold"
-                               Text="Equivalent CLI command" />
-                    <TextBlock Grid.Column="1"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               Text="Uses the same typed operation as the GUI" />
-                </Grid>
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="OperatorCommandTextBox"
-                             Grid.Column="0"
-                             IsReadOnly="True"
-                             FontFamily="Cascadia Mono"
-                             FontSize="12"
-                             AutomationProperties.Name="Exact equivalent CLI command"
-                             HorizontalScrollBarVisibility="Auto"
-                             Text="Run an operation to see its exact PowerShell command." />
-                    <Button x:Name="CopyOperatorCommandButton"
-                            Grid.Column="1"
-                            Margin="8,0,0,0"
-                            Style="{StaticResource SecondaryButton}"
-                            IsEnabled="False"
-                            Click="OnCopyOperatorCommand"
-                            Content="Copy command" />
-                </Grid>
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="3"
                 Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,1,0,0">

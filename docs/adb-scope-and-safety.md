@@ -41,6 +41,13 @@ test-only APK admission are separate explicit options. Install errors retain
 the Android failure code so signing, version, ABI, or storage problems remain
 diagnosable.
 
+The bundle route reads at least two top-level `.apk` files from one selected
+folder, orders them deterministically, and passes the entire set through one
+`adb install-multiple` request. It does not recurse, and it does not treat a
+folder of unrelated standalone apps as a batch queue. Android rejects package
+name, version, signing-certificate, or required-split mismatches without a
+partial per-file install loop.
+
 ## Multiple Devices
 
 Every operation is sent with `adb -s <quest-serial>`. The app does not rely on

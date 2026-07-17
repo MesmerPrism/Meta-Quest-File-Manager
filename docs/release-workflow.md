@@ -1,40 +1,101 @@
 # Release Workflow
 
 GitHub Pages is the stable human-facing install surface. GitHub Releases is the
-binary source of truth. Pages download links target `releases/latest/download`
-so the website does not change for every version.
+binary source of truth. Pages links target `releases/latest/download`, so a new
+release does not require new website URLs.
 
-## Initial Delivery
+## Published Assets
 
-The first release workflow will publish:
+Every Windows preview release contains:
 
-- `MetaQuestFileManager-win-x64.zip`;
-- `meta-quest-file-manager-cli-win-x64.zip`;
-- `SHA256SUMS.txt`.
+- `MetaQuestFileManager-Setup.exe`: signed guided installer and updater;
+- `MetaQuestFileManager-win-x64.msix`: signed Windows package;
+- `MetaQuestFileManager.appinstaller`: update feed for the stable package
+  identity;
+- `MetaQuestFileManager.cer`: public half of the package signing certificate;
+- `MetaQuestFileManager-win-x64.zip`: portable WPF app plus operator CLI;
+- `meta-quest-file-manager-cli-win-x64.zip`: CLI-only automation archive;
+- `SHA256SUMS.txt`: checksums for every release asset;
+- `release-validation.json`: signature, timestamp, identity, and feed receipt.
 
-The archives are self-contained .NET 10 Windows x64 publishes. The primary
-archive contains both `MetaQuestFileManager.exe` and
-`meta-quest-file-manager.exe`; this makes every command displayed by the GUI
-runnable from the same extracted directory. The second archive remains a
-CLI-only automation download. Android Platform Tools are not bundled in this
-first lane.
+Android Platform Tools are not bundled. The app discovers an operator-supplied
+`adb.exe` through the documented search order.
 
-## Signed Guided Delivery
+## Consumer Routes
 
-The next delivery unit will add:
+The recommended route is `MetaQuestFileManager-Setup.exe`. It downloads the
+public certificate and App Installer feed from the latest GitHub release,
+requests Windows administrator approval, trusts the certificate in Local
+Machine `TrustedPeople`, installs or updates the stable package identity, and
+launches the app.
 
-- a privately signed guided setup executable;
-- a signed MSIX and `.appinstaller` feed if package identity is justified;
-- the public certificate needed for the preview trust bootstrap;
-- startup update checks against GitHub Releases;
-- a portable fallback archive;
-- signature, timestamp, package-shape, and installed-launch validation.
+For machines that block the self-issued helper executable, the manual fallback
+is deliberately kept public:
 
-Private keys stay in the Windows certificate store and GitHub Actions secrets.
-They are never committed. A self-issued certificate can support an explicitly
-trusted MSIX but does not guarantee that Smart App Control will admit a
-downloaded helper executable. The manual certificate and App Installer route
-must remain available until a publicly trusted signing path is configured.
+1. download `MetaQuestFileManager.cer` and trust it in **Trusted People**;
+2. download and open `MetaQuestFileManager.appinstaller`;
+3. if App Installer is unavailable, download and open the signed MSIX;
+4. use the portable ZIP when package installation is restricted.
 
-No release tag should be published until the exact package shape and update
-identity are tested on a clean Windows machine.
+A self-issued certificate can support an explicitly trusted MSIX but does not
+guarantee that Smart App Control will admit a downloaded helper executable.
+The website must not describe this helper as Smart App Control safe.
+
+## Local Release Validation
+
+PowerShell 7.6 or newer and Visual Studio with the MSIX/Desktop Bridge workload
+are required. Export a repository-specific PFX from the private Windows
+certificate store into ignored `artifacts/signing`, then run:
+
+```powershell
+pwsh -NoProfile -File ./tools/app/Invoke-ReleaseBuild.ps1 `
+  -Version <version> `
+  -PackageCertificatePath ./artifacts/signing/windows-signing.pfx `
+  -PackageCertificatePassword <pfx-password>
+
+pwsh -NoProfile -File ./tools/app/Test-ConsumerInstall.ps1 `
+  -ReleaseDirectory ./artifacts/release `
+  -RemoveAfterTest
+```
+
+The default consumer test exercises the elevated guided route. On an
+unattended, non-elevated agent shell, use `-DirectPackage` to validate the
+helper's no-change plan and then install the same signed MSIX directly; the
+receipt records which route ran and never claims the guided route passed.
+
+The release build preserves the native WAP-produced MSIX, applies SHA-256
+Authenticode signatures with RFC 3161 timestamps, verifies the expected
+publisher, checks the App Installer identity and stable URLs, inspects the MSIX
+payload, and writes checksums. The consumer test stages a local HTTP feed with range
+support because the Windows deployment service does not consume workspace file
+URIs like a browser download.
+
+The guided setup also exposes a no-change agent route:
+
+```powershell
+MetaQuestFileManager-Setup.exe --plan --json
+```
+
+`--plan` downloads and validates the release identity without trusting a
+certificate or installing a package. Actual guided installation requests UAC;
+the elevation is part of the public installer contract.
+
+## GitHub Configuration
+
+The release workflow requires these Actions secrets:
+
+- `WINDOWS_PACKAGE_CERTIFICATE_BASE64`;
+- `WINDOWS_PACKAGE_CERTIFICATE_PASSWORD`;
+- `WINDOWS_PACKAGE_PUBLISHER`;
+- `WINDOWS_PREVIEW_SETUP_CERTIFICATE_BASE64`;
+- `WINDOWS_PREVIEW_SETUP_CERTIFICATE_PASSWORD`.
+
+Optional Actions variables select alternate RFC 3161 timestamp services:
+
+- `WINDOWS_PACKAGE_TIMESTAMP_URL`;
+- `WINDOWS_PREVIEW_SETUP_TIMESTAMP_URL`.
+
+Private keys stay in the Windows certificate store, ignored local artifacts,
+and encrypted GitHub Actions secrets. They are never committed. Publishing a
+tag or manually dispatching the workflow builds, validates, uploads, and then
+creates or updates the matching GitHub Release.

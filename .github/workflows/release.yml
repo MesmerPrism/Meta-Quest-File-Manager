@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
 
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.201
+
+      - uses: microsoft/setup-msbuild@v2
 
       - name: Resolve version
         id: version
@@ -45,46 +47,52 @@ jobs:
           "semantic_version=$semanticVersion" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "tag_name=$tagName" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Restore, build, and test
-        run: |
-          dotnet restore MetaQuestFileManager.slnx
-          dotnet build MetaQuestFileManager.slnx --configuration Release --no-restore -p:Version=${{ steps.version.outputs.semantic_version }}
-          dotnet test MetaQuestFileManager.slnx --configuration Release --no-build
-
-      - name: Publish Windows app
-        run: >
-          dotnet publish src/MetaQuestFileManager.App/MetaQuestFileManager.App.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:Version=${{ steps.version.outputs.semantic_version }}
-          --output artifacts/app-win-x64
-
-      - name: Publish CLI
-        run: >
-          dotnet publish src/MetaQuestFileManager.Cli/MetaQuestFileManager.Cli.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:Version=${{ steps.version.outputs.semantic_version }}
-          --output artifacts/cli-win-x64
-
-      - name: Package archives and checksums
+      - name: Restore signing material
         shell: pwsh
+        env:
+          PACKAGE_PFX_BASE64: ${{ secrets.WINDOWS_PACKAGE_CERTIFICATE_BASE64 }}
+          SETUP_PFX_BASE64: ${{ secrets.WINDOWS_PREVIEW_SETUP_CERTIFICATE_BASE64 }}
         run: |
-          $releaseRoot = Join-Path $PWD 'artifacts/release'
-          $windowsRoot = Join-Path $PWD 'artifacts/windows-win-x64'
-          New-Item -ItemType Directory -Force $releaseRoot | Out-Null
-          New-Item -ItemType Directory -Force $windowsRoot | Out-Null
-          Copy-Item artifacts/app-win-x64/* $windowsRoot -Recurse
-          Copy-Item artifacts/cli-win-x64/meta-quest-file-manager.exe $windowsRoot
-          Compress-Archive -Path artifacts/windows-win-x64/* -DestinationPath "$releaseRoot/MetaQuestFileManager-win-x64.zip"
-          Compress-Archive -Path artifacts/cli-win-x64/* -DestinationPath "$releaseRoot/meta-quest-file-manager-cli-win-x64.zip"
-          Get-FileHash "$releaseRoot/*.zip" -Algorithm SHA256 |
-            ForEach-Object { '{0} *{1}' -f $_.Hash.ToLowerInvariant(), [IO.Path]::GetFileName($_.Path) } |
-            Set-Content "$releaseRoot/SHA256SUMS.txt" -Encoding utf8
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PFX_BASE64)) {
+            throw 'WINDOWS_PACKAGE_CERTIFICATE_BASE64 is not configured.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:SETUP_PFX_BASE64)) {
+            throw 'WINDOWS_PREVIEW_SETUP_CERTIFICATE_BASE64 is not configured.'
+          }
+
+          [IO.File]::WriteAllBytes(
+            (Join-Path $env:RUNNER_TEMP 'package-signing.pfx'),
+            [Convert]::FromBase64String($env:PACKAGE_PFX_BASE64))
+          [IO.File]::WriteAllBytes(
+            (Join-Path $env:RUNNER_TEMP 'setup-signing.pfx'),
+            [Convert]::FromBase64String($env:SETUP_PFX_BASE64))
+
+      - name: Build and validate release assets
+        shell: pwsh
+        env:
+          PACKAGE_PFX_PASSWORD: ${{ secrets.WINDOWS_PACKAGE_CERTIFICATE_PASSWORD }}
+          SETUP_PFX_PASSWORD: ${{ secrets.WINDOWS_PREVIEW_SETUP_CERTIFICATE_PASSWORD }}
+          PACKAGE_PUBLISHER: ${{ secrets.WINDOWS_PACKAGE_PUBLISHER }}
+          PACKAGE_TIMESTAMP_URL: ${{ vars.WINDOWS_PACKAGE_TIMESTAMP_URL }}
+          SETUP_TIMESTAMP_URL: ${{ vars.WINDOWS_PREVIEW_SETUP_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_PFX_PASSWORD) -or
+              [string]::IsNullOrWhiteSpace($env:SETUP_PFX_PASSWORD) -or
+              [string]::IsNullOrWhiteSpace($env:PACKAGE_PUBLISHER)) {
+            throw 'Package/setup signing passwords and WINDOWS_PACKAGE_PUBLISHER must be configured.'
+          }
+
+          $packageTimestamp = if ($env:PACKAGE_TIMESTAMP_URL) { $env:PACKAGE_TIMESTAMP_URL } else { 'http://timestamp.digicert.com' }
+          $setupTimestamp = if ($env:SETUP_TIMESTAMP_URL) { $env:SETUP_TIMESTAMP_URL } else { 'http://timestamp.digicert.com' }
+          ./tools/app/Invoke-ReleaseBuild.ps1 `
+            -Version '${{ steps.version.outputs.semantic_version }}' `
+            -PackageCertificatePath (Join-Path $env:RUNNER_TEMP 'package-signing.pfx') `
+            -PackageCertificatePassword $env:PACKAGE_PFX_PASSWORD `
+            -SetupCertificatePath (Join-Path $env:RUNNER_TEMP 'setup-signing.pfx') `
+            -SetupCertificatePassword $env:SETUP_PFX_PASSWORD `
+            -Publisher $env:PACKAGE_PUBLISHER `
+            -PackageTimestampUrl $packageTimestamp `
+            -SetupTimestampUrl $setupTimestamp
 
       - uses: actions/upload-artifact@v7
         with:
@@ -103,5 +111,16 @@ jobs:
             gh release upload $tagName $assets --clobber
           }
           else {
-            gh release create $tagName $assets --title "Meta Quest File Manager $tagName" --generate-notes --latest --target $env:GITHUB_SHA
+            gh release create $tagName $assets `
+              --title "Meta Quest File Manager $tagName" `
+              --generate-notes `
+              --latest `
+              --target $env:GITHUB_SHA
           }
+
+      - name: Remove temporary signing files
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'package-signing.pfx') -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'setup-signing.pfx') -Force -ErrorAction SilentlyContinue

@@ -7,15 +7,15 @@ and public-safe.
 
 Meta Quest File Manager is a Windows-first operator tool for ADB-authorized
 Meta Quest headsets. It owns file-transfer UX, installed-package inspection,
-single-APK export, user-supplied APK installation, diagnostics, and Windows
-delivery. It does not own Quest runtime behavior, bypass Android permissions,
-or promise access to protected app data.
+single-APK export, single-APK and complete split-set installation, diagnostics,
+and Windows delivery. It does not own Quest runtime behavior, bypass Android
+permissions, or promise access to protected app data.
 
 The GUI and CLI must invoke the same typed `OperatorCommand` routes. Every GUI
-operation displays a copyable PowerShell command built from the same immutable
-arguments it executes. UI handlers collect inputs, invoke those routes, and
-display structured results; they must not hide ADB or filesystem business
-logic.
+operation must have an exact CLI-equivalent route built from the same immutable
+arguments it executes. The CLI is an agent and automation surface and is not
+displayed in the WPF app. UI handlers collect inputs, invoke shared routes, and
+display structured results; they must not hide ADB or filesystem business logic.
 
 ## Public Boundary
 
@@ -37,8 +37,45 @@ documented.
   power, or proximity operations without a separate safety and UX review.
 - APK export supports one installed APK path and rejects split packages rather
   than producing an incomplete backup.
+- APK bundle install accepts one folder containing at least two top-level APKs
+  and passes the complete deterministic set to one serial-scoped
+  `adb install-multiple` call. It does not recurse or install independent apps
+  one by one.
 - A copied APK does not include app data, OBB files, downloaded assets, or
   store entitlement.
+
+## Agent CLI Workflow
+
+Use the CLI for all automated or agent-driven operation checks. Never scrape,
+click, or expose a command transcript from the WPF window. During source work,
+the prefix is:
+
+```powershell
+dotnet run --project src/MetaQuestFileManager.Cli --
+```
+
+In a published Windows archive, invoke `meta-quest-file-manager.exe` directly.
+Start with read-only discovery, select one ready serial explicitly, and then
+run the narrow operation:
+
+```powershell
+meta-quest-file-manager.exe devices --json
+meta-quest-file-manager.exe files list --serial <quest-serial> --path /sdcard --json
+meta-quest-file-manager.exe files pull --serial <quest-serial> --remote <remote-path> --output <local-path>
+meta-quest-file-manager.exe files push --serial <quest-serial> --file <local-path> --remote <remote-path>
+meta-quest-file-manager.exe apk list --serial <quest-serial> --json
+meta-quest-file-manager.exe apk export --serial <quest-serial> --package <package> --output <local-apk>
+meta-quest-file-manager.exe apk install --serial <quest-serial> --file <local-apk>
+meta-quest-file-manager.exe apk install-bundle --serial <quest-serial> --folder <apk-folder>
+```
+
+The WPF buttons map to those routes exactly. Both install actions accept
+`--no-replace`, `--downgrade`, `--grant-runtime-permissions`, and `--test-only`.
+`install-bundle` snapshots every top-level `.apk` path in the folder, orders
+the base APK first when recognizable, and installs all parts atomically as one
+package set. ADB rejects mixed package names, versions, signatures, or missing
+required splits. Pass `--adb <path>` to select a particular ADB executable
+without changing global ADB state.
 
 ## Build And Validation
 
@@ -50,6 +87,38 @@ dotnet test MetaQuestFileManager.slnx --configuration Release
 dotnet run --project src/MetaQuestFileManager.Cli -- --help
 pwsh -NoProfile -File ./tools/Test-PublicBoundary.ps1
 ```
+
+For signed release work, first use `--plan` to validate the exact guided
+installer inputs without changing Windows trust or package state:
+
+```powershell
+artifacts/release/MetaQuestFileManager-Setup.exe --plan --json `
+  --certificate-source artifacts/release/MetaQuestFileManager.cer `
+  --appinstaller-source artifacts/release/MetaQuestFileManager.appinstaller
+```
+
+Build and verify all public assets through the shared release route:
+
+```powershell
+pwsh -NoProfile -File ./tools/app/Invoke-ReleaseBuild.ps1 `
+  -Version <version> `
+  -PackageCertificatePath ./artifacts/signing/windows-signing.pfx `
+  -PackageCertificatePassword <pfx-password>
+
+pwsh -NoProfile -File ./tools/app/Test-ConsumerInstall.ps1 `
+  -ReleaseDirectory ./artifacts/release `
+  -RemoveAfterTest
+```
+
+Use `-DirectPackage` only when the agent shell cannot accept UAC. That fallback
+validates the helper plan and signed MSIX install/launch separately, and the
+receipt sets `guided_install_validated` to false. Do not report it as a guided
+installer pass.
+
+Never print, log, commit, or persist the PFX password in a script. The guided
+window and `--quiet` route both invoke the same `GuidedInstaller`; actual
+installation requests UAC because Local Machine certificate trust and the App
+Installer update association are part of the release contract.
 
 Run the app:
 
@@ -75,7 +144,8 @@ dotnet run --project src/MetaQuestFileManager.App
 ## Release Posture
 
 GitHub Pages is the human-facing download surface and GitHub Releases is the
-binary source of truth. The initial workflow publishes portable Windows app
-and CLI archives plus checksums. Private signing, the guided installer, and
-automatic update adoption require an explicit release unit and configured
-repository secrets; never commit private certificate material.
+binary source of truth. The workflow publishes the signed guided setup, signed
+MSIX, App Installer feed, public CER, portable app/CLI archives, checksums, and
+a validation receipt. Private signing material is supplied only through the
+Windows certificate store, ignored `artifacts`, and GitHub Actions secrets.
+Never commit private certificate material or generated release assets.

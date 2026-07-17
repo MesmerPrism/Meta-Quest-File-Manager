@@ -9,6 +9,11 @@ $trackedFiles = @(& git -C $repoRoot ls-files)
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not enumerate tracked files.'
 }
+$untrackedFiles = @(& git -C $repoRoot ls-files --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not enumerate untracked public files.'
+}
+$repositoryFiles = @($trackedFiles + $untrackedFiles | Sort-Object -Unique)
 
 $forbiddenExtensions = @(
     '.apk', '.apks', '.aab', '.idsig', '.keystore', '.jks', '.pfx', '.p12', '.cer'
@@ -19,7 +24,7 @@ $textExtensions = @(
 )
 $violations = [System.Collections.Generic.List[string]]::new()
 
-foreach ($relativePath in $trackedFiles) {
+foreach ($relativePath in $repositoryFiles) {
     $normalizedPath = $relativePath.Replace('\', '/')
     $extension = [IO.Path]::GetExtension($relativePath).ToLowerInvariant()
 
@@ -59,4 +64,4 @@ if ($violations.Count -gt 0) {
     throw "Public-boundary validation failed with $($violations.Count) issue(s)."
 }
 
-Write-Output "Public-boundary validation passed for $($trackedFiles.Count) tracked files."
+Write-Output "Public-boundary validation passed for $($repositoryFiles.Count) tracked and untracked public files."

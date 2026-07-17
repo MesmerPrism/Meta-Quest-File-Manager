@@ -23,9 +23,12 @@ action can be automated and tested.
 - reject split APK packages with an actionable explanation;
 - install a user-supplied APK with explicit reinstall, downgrade, runtime
   permission, and test-package options;
+- install every top-level APK in a selected bundle folder together through one
+  atomic split-package installation;
 - expose the same typed routes through a Windows WPF app and CLI;
-- display the exact copyable PowerShell command for the operation most recently
-  triggered in the WPF app.
+- keep the automation-oriented CLI out of the non-technical WPF interface;
+- publish a signed MSIX, App Installer update feed, guided setup helper, and
+  portable fallback archives.
 
 The app does not copy app data, saves, OBB folders, downloaded asset packs, or
 store entitlements. ADB only exposes paths permitted to the Android shell
@@ -54,6 +57,15 @@ dotnet test MetaQuestFileManager.slnx
 dotnet run --project src/MetaQuestFileManager.App
 ```
 
+## Install
+
+The [project download page](https://mesmerprism.github.io/Meta-Quest-File-Manager/)
+offers the guided Windows setup, manual signed-package route, and portable
+fallback. The guided helper requests administrator approval to trust the public
+package certificate and register the App Installer update feed. See the
+[release workflow](docs/release-workflow.md) for signature and Smart App
+Control limitations.
+
 ## CLI
 
 ```powershell
@@ -64,13 +76,14 @@ dotnet run --project src/MetaQuestFileManager.Cli -- files push --serial <quest-
 dotnet run --project src/MetaQuestFileManager.Cli -- apk list --serial <quest-serial>
 dotnet run --project src/MetaQuestFileManager.Cli -- apk export --serial <quest-serial> --package com.example.app --output ./com.example.app.apk
 dotnet run --project src/MetaQuestFileManager.Cli -- apk install --serial <quest-serial> --file ./example.apk
+dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle --serial <quest-serial> --folder ./example-apk-set
 ```
 
 Pass `--json` to list commands for machine-readable output. Pass `--adb` to
 select an explicit ADB executable without changing global machine settings.
 The Windows release archive places `MetaQuestFileManager.exe` and
-`meta-quest-file-manager.exe` beside each other so every displayed GUI command
-can be run directly in PowerShell.
+`meta-quest-file-manager.exe` beside each other. The CLI is intended for agents,
+automation, and advanced operator workflows; it is not displayed in the GUI.
 
 ## Design And Safety
 
@@ -82,12 +95,9 @@ can be run directly in PowerShell.
 
 ## Roadmap
 
-1. Finish the Windows transfer and package-management experience.
+1. Add split-APK set export with a manifest and stronger package-set validation.
 2. Add diagnostics bundles and no-device UI verification.
-3. Add privately signed Windows delivery, a guided installer, and update
-   checks using GitHub Pages plus GitHub Releases.
-4. Add split-APK set export/install with a manifest and exact-set validation.
-5. Define portable contracts for future Android and Apple host clients.
+3. Define portable contracts for future Android and Apple host clients.
 
 ## License
 
