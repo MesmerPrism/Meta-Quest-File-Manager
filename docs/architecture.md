@@ -11,7 +11,8 @@ focused file and APK transfer tool, not another general Quest runtime console.
 - ADB tool discovery and bounded process execution.
 - Serial-scoped device discovery and operations.
 - Browsing, pulling, and explicit pushing on shell-accessible paths.
-- Third-party package listing, single-APK export, hashing, and APK install.
+- Third-party package listing, single-APK export, hashing, single-APK install,
+  and atomic folder-based split APK set install.
 - Windows GUI and CLI projections.
 - Public CI, Pages, release archives, and boundary validation.
 
@@ -39,9 +40,10 @@ contract: its immutable inputs produce both the CLI argument vector and the
 core execution request. Arguments remain structured until they reach the
 process API. Remote shell paths use one audited POSIX quoting helper.
 
-The CLI is the contract surface for future GUI, Android-host, and Apple-host
-adapters. Any new GUI action must first have an equivalent typed command, CLI
-route, copyable PowerShell rendering, and parity test.
+The CLI is the contract surface for agents and future GUI, Android-host, and
+Apple-host adapters. Any new GUI action must first have an equivalent typed
+command, CLI route, optional PowerShell rendering for tests/docs, and parity
+test. Automation details stay out of the non-technical WPF interface.
 
 ## Observability
 
@@ -60,6 +62,8 @@ evidence local.
   arguments through the serial-scoped ADB projection.
 - Parsers cover ready, unauthorized, and offline devices; file paths with
   spaces; package lists; single APKs; and split APK rejection.
+- Bundle tests prove one deterministic top-level APK set becomes one
+  serial-scoped `install-multiple` invocation.
 - CI builds the WPF app, runs the core tests, exercises CLI help, and scans the
   tracked public boundary.
 - Live Quest validation is a separate serial-scoped manual gate.
@@ -80,6 +84,7 @@ packages, private behavior, generated binaries, or broad runtime features.
 | --- | --- |
 | Wrong headset | Require and display the exact ADB serial on every route. |
 | Incomplete exported app | Refuse any package with zero or multiple APK paths. |
+| Partial bundle install | Snapshot at least two top-level APK paths and pass the complete set to one `install-multiple` operation. |
 | Shell injection | Validate serial/package input and quote remote paths with one helper. |
 | Hidden device mutation | Keep mutations explicit and omit delete/uninstall from v1. |
 | Misleading backup claim | State clearly that APK export excludes data and assets. |

@@ -4,8 +4,9 @@
 
 - Why it matters: established the concrete goal of retrieving sideloaded,
   non-store, single-APK apps from Quest through ADB.
-- Lesson borrowed: use `pm path`, require exactly one returned APK path, pull
-  that file, hash it, and keep split APK sets out of the single-file workflow.
+- Lesson borrowed: use `pm path`, require exactly one returned APK path for a
+  single-file export, pull and hash that file, and install a complete user-held
+  split set together rather than treating only `base.apk` as sufficient.
 - Overreach rejected: no store-app redistribution, entitlement bypass, app-data
   backup claim, or assumption that a Quest APK runs on unrelated Android
   hardware.

@@ -184,13 +184,22 @@ internal static class CliApplication
             case "install":
                 {
                     var apkPath = RequireOption(arguments, "--file");
-                    var options = new ApkInstallOptions(
-                        ReplaceExisting: !HasFlag(arguments, "--no-replace"),
-                        AllowDowngrade: HasFlag(arguments, "--downgrade"),
-                        GrantRuntimePermissions: HasFlag(arguments, "--grant-runtime-permissions"),
-                        AllowTestPackages: HasFlag(arguments, "--test-only"));
+                    var options = ReadInstallOptions(arguments);
                     var execution = await executor.ExecuteAsync(OperatorCommands.InstallApk(serial, apkPath, options));
                     Console.WriteLine(execution.CommandResult?.StandardOutput.Trim());
+                    return 0;
+                }
+
+            case "install-bundle":
+                {
+                    var folderPath = RequireOption(arguments, "--folder");
+                    var options = ReadInstallOptions(arguments);
+                    var execution = await executor.ExecuteAsync(
+                        OperatorCommands.InstallApkBundle(serial, folderPath, options));
+                    var result = execution.ApkBundleInstallResult ??
+                        throw new InvalidOperationException("APK bundle installation returned no result.");
+                    Console.WriteLine(result.CommandResult.StandardOutput.Trim());
+                    Console.WriteLine($"Installed {result.ApkPaths.Count} APK parts as one package set.");
                     return 0;
                 }
 
@@ -208,6 +217,13 @@ internal static class CliApplication
 
         return arguments[1].ToLowerInvariant();
     }
+
+    private static ApkInstallOptions ReadInstallOptions(string[] arguments) =>
+        new(
+            ReplaceExisting: !HasFlag(arguments, "--no-replace"),
+            AllowDowngrade: HasFlag(arguments, "--downgrade"),
+            GrantRuntimePermissions: HasFlag(arguments, "--grant-runtime-permissions"),
+            AllowTestPackages: HasFlag(arguments, "--test-only"));
 
     private static string RequireOption(string[] arguments, string name) =>
         GetOption(arguments, name) ?? throw new ArgumentException($"Missing required option {name}.");
@@ -251,6 +267,7 @@ internal static class CliApplication
               meta-quest-file-manager apk list --serial <serial> [--json]
               meta-quest-file-manager apk export --serial <serial> --package <package> --output <file.apk> [--overwrite] [--json]
               meta-quest-file-manager apk install --serial <serial> --file <file.apk> [options]
+              meta-quest-file-manager apk install-bundle --serial <serial> --folder <apk-folder> [options]
 
             Install options:
               --no-replace                 Do not reinstall over an existing package.
@@ -258,8 +275,9 @@ internal static class CliApplication
               --grant-runtime-permissions  Ask Android to grant eligible runtime permissions.
               --test-only                  Allow an APK marked testOnly.
 
-            ADB is always serial-scoped for device operations. Split APK packages are
-            refused by the single-APK export command.
+            Bundle install reads every top-level .apk file in the selected folder and
+            sends the complete set through one serial-scoped adb install-multiple call.
+            Split APK packages are refused by the single-APK export command.
             """);
     }
 }

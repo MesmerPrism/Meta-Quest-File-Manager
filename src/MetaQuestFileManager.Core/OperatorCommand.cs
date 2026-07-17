@@ -11,7 +11,8 @@ public enum OperatorCommandKind
     PushFile,
     ListPackages,
     ExportApk,
-    InstallApk
+    InstallApk,
+    InstallApkBundle
 }
 
 public sealed class OperatorCommand
@@ -24,6 +25,7 @@ public sealed class OperatorCommand
         string? localPath = null,
         string? packageName = null,
         ApkInstallOptions? installOptions = null,
+        ApkBundleInput? apkBundle = null,
         bool overwrite = false)
     {
         Kind = kind;
@@ -33,6 +35,7 @@ public sealed class OperatorCommand
         LocalPath = localPath;
         PackageName = packageName;
         InstallOptions = installOptions;
+        ApkBundle = apkBundle;
         Overwrite = overwrite;
     }
 
@@ -49,6 +52,8 @@ public sealed class OperatorCommand
     public string? PackageName { get; }
 
     public ApkInstallOptions? InstallOptions { get; }
+
+    public ApkBundleInput? ApkBundle { get; }
 
     public bool Overwrite { get; }
 
@@ -190,6 +195,47 @@ public static class OperatorCommands
             localPath: fullApkPath,
             installOptions: options);
     }
+
+    public static OperatorCommand InstallApkBundle(
+        string serial,
+        string folderPath,
+        ApkInstallOptions? options = null)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var bundle = ApkBundleInput.FromFolder(folderPath);
+        options ??= new ApkInstallOptions();
+        var arguments = new List<string>
+        {
+            "apk", "install-bundle", "--serial", serial, "--folder", bundle.FolderPath
+        };
+        if (!options.ReplaceExisting)
+        {
+            arguments.Add("--no-replace");
+        }
+
+        if (options.AllowDowngrade)
+        {
+            arguments.Add("--downgrade");
+        }
+
+        if (options.GrantRuntimePermissions)
+        {
+            arguments.Add("--grant-runtime-permissions");
+        }
+
+        if (options.AllowTestPackages)
+        {
+            arguments.Add("--test-only");
+        }
+
+        return new OperatorCommand(
+            OperatorCommandKind.InstallApkBundle,
+            arguments,
+            serial: serial,
+            localPath: bundle.FolderPath,
+            installOptions: options,
+            apkBundle: bundle);
+    }
 }
 
 public sealed record OperatorExecutionResult(
@@ -198,7 +244,8 @@ public sealed record OperatorExecutionResult(
     IReadOnlyList<RemoteEntry>? RemoteEntries = null,
     IReadOnlyList<string>? Packages = null,
     CommandResult? CommandResult = null,
-    ApkExportResult? ApkExportResult = null);
+    ApkExportResult? ApkExportResult = null,
+    ApkBundleInstallResult? ApkBundleInstallResult = null);
 
 public sealed class OperatorCommandExecutor(AdbClient client)
 {
@@ -267,6 +314,21 @@ public sealed class OperatorCommandExecutor(AdbClient client)
                         Require(command.LocalPath, nameof(command.LocalPath)),
                         command.InstallOptions,
                         cancellationToken).ConfigureAwait(false));
+
+            case OperatorCommandKind.InstallApkBundle:
+                {
+                    var bundle = command.ApkBundle ??
+                        throw new InvalidOperationException("The operator command is missing its APK bundle.");
+                    var result = await _client.InstallApkBundleAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        bundle.ApkPaths,
+                        command.InstallOptions,
+                        cancellationToken).ConfigureAwait(false);
+                    return new OperatorExecutionResult(
+                        command,
+                        CommandResult: result.CommandResult,
+                        ApkBundleInstallResult: result);
+                }
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(command), command.Kind, "Unknown operator command.");

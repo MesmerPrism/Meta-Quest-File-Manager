@@ -120,7 +120,6 @@ public partial class MainWindow : Window
                     RequireReadyDevice().Serial,
                     entry.FullPath,
                     dialog.FileName);
-                SetOperatorCommand(command);
                 await RequireOperator().ExecuteAsync(command);
                 StatusText.Text = $"Saved {entry.Name} to {dialog.FileName}.";
             },
@@ -170,13 +169,11 @@ public partial class MainWindow : Window
         }
 
         var command = OperatorCommands.PushFile(device.Serial, dialog.FileName, remotePath);
-        SetOperatorCommand(command);
         await RunBusyAsync(
             async () =>
             {
                 await RequireOperator().ExecuteAsync(command);
                 await RefreshRemoteDirectoryAsync();
-                SetOperatorCommand(command);
                 StatusText.Text = $"Copied {Path.GetFileName(dialog.FileName)} to {remotePath}.";
             },
             $"Pushing {Path.GetFileName(dialog.FileName)}…");
@@ -221,14 +218,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var options = new ApkInstallOptions(
-            ReplaceExisting: ReplaceExistingBox.IsChecked == true,
-            AllowDowngrade: AllowDowngradeBox.IsChecked == true,
-            GrantRuntimePermissions: GrantPermissionsBox.IsChecked == true,
-            AllowTestPackages: AllowTestPackageBox.IsChecked == true);
-
-        var command = OperatorCommands.InstallApk(device.Serial, apkPath, options);
-        SetOperatorCommand(command);
+        var command = OperatorCommands.InstallApk(device.Serial, apkPath, ReadInstallOptions());
         await RunBusyAsync(
             async () =>
             {
@@ -236,6 +226,67 @@ public partial class MainWindow : Window
                 StatusText.Text = $"Installed {Path.GetFileName(apkPath)} on {device.Serial}.";
             },
             $"Installing {Path.GetFileName(apkPath)}…");
+    }
+
+    private void OnBrowseInstallApkBundle(object sender, RoutedEventArgs eventArgs)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose a folder containing one APK package set",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            InstallApkBundlePathBox.Text = dialog.FolderName;
+        }
+    }
+
+    private async void OnInstallApkBundle(object sender, RoutedEventArgs eventArgs)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        OperatorCommand command;
+        try
+        {
+            command = OperatorCommands.InstallApkBundle(
+                device.Serial,
+                InstallApkBundlePathBox.Text.Trim(),
+                ReadInstallOptions());
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException)
+        {
+            ShowInputMessage(exception.Message);
+            return;
+        }
+
+        var bundle = command.ApkBundle ??
+            throw new InvalidOperationException("The APK bundle command contains no APK set.");
+        var confirmation = MessageBox.Show(
+            this,
+            $"Install all {bundle.ApkPaths.Count} APK parts from\n{bundle.FolderPath}\n\n" +
+            $"as one package set on {device.Serial}?",
+            "Confirm APK bundle install",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        if (confirmation != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await RequireOperator().ExecuteAsync(command);
+                var result = execution.ApkBundleInstallResult ??
+                    throw new InvalidOperationException("APK bundle installation returned no result.");
+                StatusText.Text =
+                    $"Installed {result.ApkPaths.Count} APK parts as one package set on {device.Serial}.";
+            },
+            $"Installing {bundle.ApkPaths.Count} APK parts…");
     }
 
     private async void OnRefreshPackages(object sender, RoutedEventArgs eventArgs) =>
@@ -268,7 +319,6 @@ public partial class MainWindow : Window
             packageName,
             dialog.FileName,
             overwrite: true);
-        SetOperatorCommand(command);
         await RunBusyAsync(
             async () =>
             {
@@ -283,7 +333,6 @@ public partial class MainWindow : Window
     private async Task RefreshDevicesAsync()
     {
         var command = OperatorCommands.DiscoverDevices();
-        SetOperatorCommand(command);
         var execution = await RequireOperator().ExecuteAsync(command);
         var devices = execution.Devices ??
             throw new InvalidOperationException("Device discovery returned no device collection.");
@@ -299,7 +348,6 @@ public partial class MainWindow : Window
         var path = AndroidInput.RequireRemotePath(RemotePathBox.Text);
         RemotePathBox.Text = path;
         var command = OperatorCommands.ListFiles(RequireReadyDevice().Serial, path);
-        SetOperatorCommand(command);
         var execution = await RequireOperator().ExecuteAsync(command);
         var entries = execution.RemoteEntries ??
             throw new InvalidOperationException("File listing returned no entry collection.");
@@ -310,7 +358,6 @@ public partial class MainWindow : Window
     private async Task RefreshPackagesAsync()
     {
         var command = OperatorCommands.ListPackages(RequireReadyDevice().Serial);
-        SetOperatorCommand(command);
         var execution = await RequireOperator().ExecuteAsync(command);
         var packages = execution.Packages ??
             throw new InvalidOperationException("Package listing returned no package collection.");
@@ -349,32 +396,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private AdbClient RequireClient() =>
-        _client ?? throw new InvalidOperationException(
-            "ADB was not found. Install Android Platform Tools or configure META_QUEST_FILE_MANAGER_ADB.");
-
     private OperatorCommandExecutor RequireOperator() =>
         _operator ?? throw new InvalidOperationException(
             "ADB was not found. Install Android Platform Tools or configure META_QUEST_FILE_MANAGER_ADB.");
 
-    private void SetOperatorCommand(OperatorCommand command)
-    {
-        OperatorCommandTextBox.Text = command.ToPowerShellCommand(
-            ".\\meta-quest-file-manager.exe",
-            RequireClient().AdbPath);
-        CopyOperatorCommandButton.IsEnabled = true;
-    }
-
-    private void OnCopyOperatorCommand(object sender, RoutedEventArgs eventArgs)
-    {
-        if (string.IsNullOrWhiteSpace(OperatorCommandTextBox.Text))
-        {
-            return;
-        }
-
-        Clipboard.SetText(OperatorCommandTextBox.Text);
-        StatusText.Text = "Copied the exact equivalent CLI command.";
-    }
+    private ApkInstallOptions ReadInstallOptions() =>
+        new(
+            ReplaceExisting: ReplaceExistingBox.IsChecked == true,
+            AllowDowngrade: AllowDowngradeBox.IsChecked == true,
+            GrantRuntimePermissions: GrantPermissionsBox.IsChecked == true,
+            AllowTestPackages: AllowTestPackageBox.IsChecked == true);
 
     private async Task RunBusyAsync(Func<Task> action, string progressMessage)
     {

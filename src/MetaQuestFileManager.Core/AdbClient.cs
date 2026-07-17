@@ -153,28 +153,7 @@ public sealed class AdbClient
             throw new ArgumentException("The install input must be an .apk file.", nameof(apkPath));
         }
 
-        options ??= new ApkInstallOptions();
-        var arguments = new List<string> { "install" };
-        if (options.ReplaceExisting)
-        {
-            arguments.Add("-r");
-        }
-
-        if (options.AllowDowngrade)
-        {
-            arguments.Add("-d");
-        }
-
-        if (options.GrantRuntimePermissions)
-        {
-            arguments.Add("-g");
-        }
-
-        if (options.AllowTestPackages)
-        {
-            arguments.Add("-t");
-        }
-
+        var arguments = CreateInstallArguments("install", options);
         arguments.Add(fullApkPath);
         var result = await RunForDeviceAsync(
             serial,
@@ -182,6 +161,37 @@ public sealed class AdbClient
             TransferTimeout,
             cancellationToken).ConfigureAwait(false);
         return result.EnsureSuccess($"Install {Path.GetFileName(fullApkPath)}");
+    }
+
+    public async Task<ApkBundleInstallResult> InstallApkBundleAsync(
+        string serial,
+        IReadOnlyList<string> apkPaths,
+        ApkInstallOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentNullException.ThrowIfNull(apkPaths);
+        if (apkPaths.Count < 2)
+        {
+            throw new InvalidDataException(
+                "An APK bundle install requires at least two APK files.");
+        }
+
+        var normalizedPaths = apkPaths.Select(ValidateInstallApkPath).ToArray();
+        if (normalizedPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedPaths.Length)
+        {
+            throw new InvalidDataException("The APK bundle contains the same APK path more than once.");
+        }
+
+        var arguments = CreateInstallArguments("install-multiple", options);
+        arguments.AddRange(normalizedPaths);
+        var result = await RunForDeviceAsync(
+            serial,
+            arguments,
+            TransferTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Install APK bundle ({normalizedPaths.Length} parts)");
+        return new ApkBundleInstallResult(normalizedPaths, result);
     }
 
     public async Task<ApkExportResult> ExportSingleApkAsync(
@@ -244,6 +254,54 @@ public sealed class AdbClient
         var scoped = new List<string> { "-s", AndroidInput.RequireSerial(serial) };
         scoped.AddRange(arguments);
         return RunAsync(scoped, timeout, cancellationToken);
+    }
+
+    private static List<string> CreateInstallArguments(
+        string installCommand,
+        ApkInstallOptions? options)
+    {
+        options ??= new ApkInstallOptions();
+        var arguments = new List<string> { installCommand };
+        if (options.ReplaceExisting)
+        {
+            arguments.Add("-r");
+        }
+
+        if (options.AllowDowngrade)
+        {
+            arguments.Add("-d");
+        }
+
+        if (options.GrantRuntimePermissions)
+        {
+            arguments.Add("-g");
+        }
+
+        if (options.AllowTestPackages)
+        {
+            arguments.Add("-t");
+        }
+
+        return arguments;
+    }
+
+    private static string ValidateInstallApkPath(string apkPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apkPath);
+        var fullApkPath = Path.GetFullPath(apkPath);
+        if (!File.Exists(fullApkPath))
+        {
+            throw new FileNotFoundException("An APK bundle part was not found.", fullApkPath);
+        }
+
+        if (!string.Equals(Path.GetExtension(fullApkPath), ".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"Every APK bundle input must end in .apk: {fullApkPath}",
+                nameof(apkPath));
+        }
+
+        return fullApkPath;
     }
 
     private Task<CommandResult> RunAsync(

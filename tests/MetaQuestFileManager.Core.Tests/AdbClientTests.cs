@@ -49,6 +49,58 @@ public sealed class AdbClientTests
     }
 
     [Fact]
+    public async Task InstallApkBundle_UsesOneSerialScopedInstallMultipleCallForEveryPart()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-bundle-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var baseApk = Path.Combine(tempRoot, "base.apk");
+        var splitApk = Path.Combine(tempRoot, "split_config.arm64_v8a.apk");
+        await File.WriteAllBytesAsync(baseApk, [1]);
+        await File.WriteAllBytesAsync(splitApk, [2]);
+
+        try
+        {
+            var runner = new RecordingCommandRunner((_, _) => Success("Success\n"));
+            var client = new AdbClient("adb-test", runner);
+
+            var result = await client.InstallApkBundleAsync(
+                "QUEST123",
+                [baseApk, splitApk],
+                new ApkInstallOptions(
+                    ReplaceExisting: true,
+                    AllowDowngrade: true,
+                    GrantRuntimePermissions: true,
+                    AllowTestPackages: true));
+
+            Assert.Equal(2, result.ApkPaths.Count);
+            Assert.Single(runner.Calls);
+            Assert.Equal(
+                [
+                    "-s", "QUEST123", "install-multiple", "-r", "-d", "-g", "-t",
+                    Path.GetFullPath(baseApk), Path.GetFullPath(splitApk)
+                ],
+                runner.Calls[0].Arguments);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task InstallApkBundle_RejectsIncompleteSetBeforeRunningAdb()
+    {
+        var runner = new RecordingCommandRunner((_, _) => Success("Success\n"));
+        var client = new AdbClient("adb-test", runner);
+
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => client.InstallApkBundleAsync("QUEST123", ["only-one.apk"]));
+
+        Assert.Contains("at least two", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(runner.Calls);
+    }
+
+    [Fact]
     public async Task ExportSingleApk_WritesApkAndChecksum()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-{Guid.NewGuid():N}");

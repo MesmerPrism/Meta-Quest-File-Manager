@@ -77,6 +77,10 @@ public sealed record ApkExportResult(
     string Sha256,
     long SizeBytes);
 
+public sealed record ApkBundleInstallResult(
+    IReadOnlyList<string> ApkPaths,
+    CommandResult CommandResult);
+
 public sealed class AdbCommandException : InvalidOperationException
 {
     public AdbCommandException(string operation, CommandResult result)

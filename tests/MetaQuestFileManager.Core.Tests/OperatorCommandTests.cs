@@ -50,14 +50,54 @@ public sealed class OperatorCommandTests
     }
 
     [Fact]
+    public async Task BundleFactoryExposesFolderRouteAndSnapshotsDeterministicApkSet()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-bundle-command-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var baseApk = Path.Combine(tempRoot, "base-master.apk");
+        var languageApk = Path.Combine(tempRoot, "base-de.apk");
+        var splitApk = Path.Combine(tempRoot, "split_config.en.apk");
+        await File.WriteAllBytesAsync(splitApk, [2]);
+        await File.WriteAllBytesAsync(baseApk, [1]);
+        await File.WriteAllBytesAsync(languageApk, [3]);
+        await File.WriteAllTextAsync(Path.Combine(tempRoot, "notes.txt"), "ignored");
+
+        try
+        {
+            var command = OperatorCommands.InstallApkBundle(
+                "QUEST123",
+                tempRoot,
+                new ApkInstallOptions(false, true, true, true));
+
+            Assert.Equal(
+                [
+                    "apk", "install-bundle", "--serial", "QUEST123", "--folder", Path.GetFullPath(tempRoot),
+                    "--no-replace", "--downgrade", "--grant-runtime-permissions", "--test-only"
+                ],
+                command.CliArguments);
+            Assert.Equal([baseApk, languageApk, splitApk], command.ApkBundle!.ApkPaths);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ExecutorRunsEveryGuiCommandThroughItsTypedCliContract()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"mqfm-operator-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
         var inputPath = Path.Combine(tempRoot, "input.apk");
+        var bundlePath = Path.Combine(tempRoot, "bundle");
+        Directory.CreateDirectory(bundlePath);
+        var baseApkPath = Path.Combine(bundlePath, "base.apk");
+        var splitApkPath = Path.Combine(bundlePath, "split_config.en.apk");
         var pullPath = Path.Combine(tempRoot, "pulled.txt");
         var exportPath = Path.Combine(tempRoot, "exported.apk");
         await File.WriteAllBytesAsync(inputPath, [0x50, 0x4b, 0x03, 0x04]);
+        await File.WriteAllBytesAsync(baseApkPath, [0x50, 0x4b, 0x03, 0x04]);
+        await File.WriteAllBytesAsync(splitApkPath, [0x50, 0x4b, 0x03, 0x04]);
 
         var runner = new RecordingCommandRunner((_, arguments) =>
         {
@@ -104,11 +144,16 @@ public sealed class OperatorCommandTests
                 "QUEST123",
                 inputPath,
                 new ApkInstallOptions(true, true, false, true)));
+            var bundle = await executor.ExecuteAsync(OperatorCommands.InstallApkBundle(
+                "QUEST123",
+                bundlePath,
+                new ApkInstallOptions(true, false, true, false)));
 
             Assert.Single(devices.Devices!);
             Assert.Equal(2, files.RemoteEntries!.Count);
             Assert.Equal(["com.example.app"], packages.Packages);
             Assert.Equal(exportPath, export.ApkExportResult!.OutputPath);
+            Assert.Equal(2, bundle.ApkBundleInstallResult!.ApkPaths.Count);
             Assert.Equal(new[] { "devices", "-l" }, runner.Calls[0].Arguments);
             Assert.All(
                 runner.Calls.Skip(1),
@@ -117,6 +162,10 @@ public sealed class OperatorCommandTests
                 runner.Calls,
                 static call => call.Arguments.SequenceEqual(
                     ["-s", "QUEST123", "install", "-r", "-d", "-t", call.Arguments[^1]]));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    ["-s", "QUEST123", "install-multiple", "-r", "-g", baseApkPath, splitApkPath]));
         }
         finally
         {
