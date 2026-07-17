@@ -72,7 +72,8 @@ receipt records which route ran and never claims the guided route passed.
 The release build preserves the native WAP-produced MSIX, applies SHA-256
 Authenticode signatures with RFC 3161 timestamps, verifies the expected
 publisher, checks the App Installer identity and stable URLs, inspects the MSIX
-payload, and writes checksums. The consumer test stages a local HTTP feed with range
+payload, and writes checksums. The public validation receipt records release
+filenames rather than local or CI-runner build paths. The consumer test stages a local HTTP feed with range
 support because the Windows deployment service does not consume workspace file
 URIs like a browser download.
 

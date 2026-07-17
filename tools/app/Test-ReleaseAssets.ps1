@@ -38,7 +38,7 @@ function Test-Signature {
     }
 
     return [pscustomobject]@{
-        Path = $Path
+        Path = [IO.Path]::GetFileName($Path)
         Status = [string]$signature.Status
         SignerSubject = $signature.SignerCertificate.Subject
         SignerThumbprint = $signature.SignerCertificate.Thumbprint
