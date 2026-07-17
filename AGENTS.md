@@ -8,6 +8,7 @@ and public-safe.
 Meta Quest File Manager is a Windows-first operator tool for ADB-authorized
 Meta Quest headsets. It owns file-transfer UX, installed-package inspection,
 single-APK export, single-APK and complete split-set installation, diagnostics,
+explicit Wi-Fi ADB connection lifecycle, bounded multi-headset installation,
 and Windows delivery. It does not own Quest runtime behavior, bypass Android
 permissions, or promise access to protected app data.
 
@@ -16,6 +17,10 @@ operation must have an exact CLI-equivalent route built from the same immutable
 arguments it executes. The CLI is an agent and automation surface and is not
 displayed in the WPF app. UI handlers collect inputs, invoke shared routes, and
 display structured results; they must not hide ADB or filesystem business logic.
+Transient WPF progress must come from the optional shared `OperatorProgress`
+contract. Use indeterminate state when ADB exposes no honest total; never infer
+percentages from console text, elapsed time, or output volume. Keep CLI JSON as
+one stable final result rather than mixing progress events into stdout.
 
 ## Public Boundary
 
@@ -33,8 +38,16 @@ documented.
 - Use serial-scoped ADB for every device operation.
 - Read-only probes come before mutations.
 - Initial file management is limited to list, pull, and explicit push.
-- Do not add delete, uninstall, clear-data, ADB server lifecycle, Wi-Fi ADB,
-  power, or proximity operations without a separate safety and UX review.
+- Do not add delete, uninstall, clear-data, ADB server lifecycle, power, or
+  proximity operations without a separate safety and UX review.
+- Wi-Fi ADB enable/connect/disconnect is the reviewed exception documented in
+  `docs/wifi-adb-and-parallel-install.md`. Every route requires explicit
+  operator confirmation. Enablement reads `wlan0` before mutation, scopes
+  `tcpip` to one ready USB serial, and connects one validated endpoint. Never
+  reset or restart the ADB server as part of this workflow.
+- Parallel installation requires at least two distinct ready Wi-Fi ADB
+  serials, uses a bounded 1–16 concurrency limit, sends one serial-scoped
+  install transaction per headset, and preserves per-target partial failures.
 - APK export supports one installed APK path and rejects split packages rather
   than producing an incomplete backup.
 - APK bundle install accepts one folder containing at least two top-level APKs
@@ -67,6 +80,11 @@ meta-quest-file-manager.exe apk list --serial <quest-serial> --json
 meta-quest-file-manager.exe apk export --serial <quest-serial> --package <package> --output <local-apk>
 meta-quest-file-manager.exe apk install --serial <quest-serial> --file <local-apk>
 meta-quest-file-manager.exe apk install-bundle --serial <quest-serial> --folder <apk-folder>
+meta-quest-file-manager.exe wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
+meta-quest-file-manager.exe wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
+meta-quest-file-manager.exe wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb
+meta-quest-file-manager.exe apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json
+meta-quest-file-manager.exe apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json
 ```
 
 The WPF buttons map to those routes exactly. Both install actions accept
@@ -77,6 +95,13 @@ package set. ADB rejects mixed package names, versions, signatures, or missing
 required splits. Pass `--adb <path>` to select a particular ADB executable
 without changing global ADB state.
 
+The `--confirm-wifi-adb` flag records that an operator approved the exact
+Wi-Fi state change; agents must not add it without that approval. Parallel
+install commands exit nonzero when any target fails, but their JSON result
+still contains every headset outcome. See
+`docs/wifi-adb-and-parallel-install.md` for the full authority and evidence
+contract.
+
 ## Build And Validation
 
 Use PowerShell 7.6 or newer through `pwsh` for maintained scripts.
@@ -86,7 +111,13 @@ dotnet build MetaQuestFileManager.slnx --configuration Release
 dotnet test MetaQuestFileManager.slnx --configuration Release
 dotnet run --project src/MetaQuestFileManager.Cli -- --help
 pwsh -NoProfile -File ./tools/Test-PublicBoundary.ps1
+pwsh -NoProfile -File ./tools/app/Test-BrandAssets.ps1
 ```
+
+The canonical folder mark and multi-resolution Windows icon live under
+`assets/branding`. Run `tools/app/New-BrandAssets.ps1` after changing the mark;
+it regenerates the EXE icon, Windows package logos, favicon, browser icons, and
+site copy from the same geometry. Do not hand-edit one generated surface alone.
 
 For signed release work, first use `--plan` to validate the exact guided
 installer inputs without changing Windows trust or package state:
@@ -130,7 +161,8 @@ dotnet run --project src/MetaQuestFileManager.App
 
 - `MetaQuestFileManager.Core` owns process execution, ADB discovery, command
   construction, typed operator commands, output parsing, transfers, APK
-  install/export, and hashes.
+  install/export, Wi-Fi endpoint lifecycle, bounded fan-out, progress units,
+  and hashes.
 - `MetaQuestFileManager.Cli` is the automation-equivalent operator surface.
 - `MetaQuestFileManager.App` is the Windows WPF projection.
 - Keep external processes behind `ICommandRunner` and preserve cancellation

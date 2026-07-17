@@ -43,11 +43,15 @@ public sealed record QuestDevice(
 {
     public bool IsReady => string.Equals(State, "device", StringComparison.OrdinalIgnoreCase);
 
+    public bool IsWifiConnection => AndroidInput.TryParseWifiEndpoint(Serial, out _, out _);
+
     public string DisplayName
     {
         get
         {
+            var transport = IsWifiConnection ? "Wi-Fi" : "USB";
             var label = string.IsNullOrWhiteSpace(Model) ? Serial : $"{Model} — {Serial}";
+            label = $"{label} [{transport}]";
             return IsReady ? label : $"{label} ({State})";
         }
     }
@@ -80,6 +84,61 @@ public sealed record ApkExportResult(
 public sealed record ApkBundleInstallResult(
     IReadOnlyList<string> ApkPaths,
     CommandResult CommandResult);
+
+public sealed record WifiAdbConnectionResult(
+    string Host,
+    int Port,
+    string Endpoint,
+    CommandResult CommandResult,
+    QuestDevice Device);
+
+public sealed record WifiAdbEnableResult(
+    string UsbSerial,
+    string Host,
+    int Port,
+    string Endpoint,
+    CommandResult AddressProbe,
+    CommandResult TcpIpCommand,
+    WifiAdbConnectionResult Connection);
+
+public sealed record TargetApkInstallResult(
+    string Serial,
+    CommandResult? CommandResult,
+    string? Error)
+{
+    public bool Succeeded => CommandResult?.Succeeded == true && string.IsNullOrWhiteSpace(Error);
+
+    public string Summary => Succeeded
+        ? "Installed successfully."
+        : !string.IsNullOrWhiteSpace(Error)
+            ? Error
+            : CommandResult?.CondensedOutput ?? "Installation did not return a result.";
+}
+
+public sealed record ParallelApkInstallResult(
+    IReadOnlyList<string> ApkPaths,
+    int MaxParallelism,
+    IReadOnlyList<TargetApkInstallResult> Targets)
+{
+    public int SucceededCount => Targets.Count(static target => target.Succeeded);
+
+    public int FailedCount => Targets.Count - SucceededCount;
+
+    public bool Succeeded => Targets.Count > 0 && FailedCount == 0;
+}
+
+public sealed record OperatorProgress(
+    string Stage,
+    string Message,
+    int CompletedUnits,
+    int TotalUnits)
+{
+    public bool IsIndeterminate => TotalUnits <= 0;
+
+    public double Percentage => IsIndeterminate
+        ? 0
+        : Math.Clamp(CompletedUnits * 100d / TotalUnits, 0, 100);
+}
 
 public sealed class AdbCommandException : InvalidOperationException
 {

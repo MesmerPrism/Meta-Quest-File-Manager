@@ -21,6 +21,12 @@ Every Windows preview release contains:
 Android Platform Tools are not bundled. The app discovers an operator-supplied
 `adb.exe` through the documented search order.
 
+The WPF app, automation CLI, guided setup helper, MSIX package, and GitHub Pages
+site use the same folder mark. Its canonical source and multi-resolution ICO
+live under `assets/branding`; `tools/app/New-BrandAssets.ps1` regenerates every
+committed application and website size, and `tools/app/Test-BrandAssets.ps1`
+checks the assets plus embedded EXE resources.
+
 ## Consumer Routes
 
 The recommended route is `MetaQuestFileManager-Setup.exe`. It downloads the

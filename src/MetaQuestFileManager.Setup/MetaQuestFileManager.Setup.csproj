@@ -8,5 +8,6 @@
     <Product>Meta Quest File Manager Setup</Product>
     <Description>Guided installer and updater for Meta Quest File Manager.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\branding\MetaQuestFileManager.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>

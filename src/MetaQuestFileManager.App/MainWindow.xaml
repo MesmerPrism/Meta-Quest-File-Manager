@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Meta Quest File Manager"
-        Width="1120"
-        Height="760"
+        Width="1180"
+        Height="820"
         MinWidth="880"
         MinHeight="620"
         Loaded="OnLoaded">
@@ -11,7 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="76" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="38" />
+            <RowDefinition Height="48" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
@@ -21,6 +21,7 @@
             <Grid Margin="24,14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
@@ -126,6 +127,92 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="Wi-Fi ADB">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Padding="22"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock FontFamily="Bahnschrift SemiBold"
+                                       FontSize="18"
+                                       Text="Enable Wi-Fi ADB" />
+                            <TextBlock Margin="0,8,0,18"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="First connect and authorize a headset by USB, select that USB headset above, and keep the PC and headset on the same Wi-Fi network. The app reads the headset address, enables TCP/IP debugging, and connects to it." />
+
+                            <TextBlock Margin="0,0,0,5" Text="TCP port" />
+                            <TextBox x:Name="WifiEnablePortBox"
+                                     Width="120"
+                                     HorizontalAlignment="Left"
+                                     Text="5555" />
+                            <Button Margin="0,16,0,0"
+                                    HorizontalAlignment="Left"
+                                    Click="OnEnableWifiAdb"
+                                    Content="Enable and connect" />
+
+                            <Border Margin="0,22,0,0"
+                                    Padding="14"
+                                    Background="#FFF7E8"
+                                    BorderBrush="#E8C981"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="This changes the headset's debugging transport and always asks for confirmation. It does not reset the ADB server. Wi-Fi ADB can stop after a reboot, network change, or authorization change." />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Padding="22"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock FontFamily="Bahnschrift SemiBold"
+                                       FontSize="18"
+                                       Text="Connect an enabled headset" />
+                            <TextBlock Margin="0,8,0,18"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="Use this when Wi-Fi ADB is already enabled and you know the headset's local IPv4 address." />
+
+                            <TextBlock Margin="0,0,0,5" Text="Headset IPv4 address or hostname" />
+                            <TextBox x:Name="WifiHostBox" />
+
+                            <TextBlock Margin="0,14,0,5" Text="TCP port" />
+                            <TextBox x:Name="WifiConnectPortBox"
+                                     Width="120"
+                                     HorizontalAlignment="Left"
+                                     Text="5555" />
+
+                            <StackPanel Margin="0,16,0,0" Orientation="Horizontal">
+                                <Button Click="OnConnectWifiAdb" Content="Connect" />
+                                <Button Margin="8,0,0,0"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Click="OnDisconnectWifiAdb"
+                                        Content="Disconnect selected Wi-Fi headset" />
+                            </StackPanel>
+
+                            <TextBlock Margin="0,22,0,0"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Text="After connecting, refresh the device list. Wi-Fi headsets appear with a [Wi-Fi] label and can be checked together in the APKs tab." />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="APKs">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>
@@ -150,6 +237,60 @@
                                            TextWrapping="Wrap"
                                            Text="Install one APK or one complete base-and-split package set. Android reports signing, version, ABI, and package conflicts." />
 
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               VerticalAlignment="Center"
+                                               Text="Wi-Fi headsets for parallel install" />
+                                    <Button Grid.Column="1"
+                                            Padding="9,4"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnSelectAllWifiTargets"
+                                            Content="Select all" />
+                                    <Button Grid.Column="2"
+                                            Margin="6,0,0,0"
+                                            Padding="9,4"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnClearWifiTargets"
+                                            Content="Clear" />
+                                </Grid>
+                                <Border Height="112"
+                                        Padding="8"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl x:Name="WifiInstallTargetsList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox Margin="2,3"
+                                                              IsChecked="{Binding IsSelected}"
+                                                              Content="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+                                <Grid Margin="0,8,0,18">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="Check at least two connected Wi-Fi headsets." />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBlock Margin="0,0,7,0"
+                                                   VerticalAlignment="Center"
+                                                   Text="Parallel limit" />
+                                        <TextBox x:Name="ParallelismBox" Width="50" Text="4" />
+                                    </StackPanel>
+                                </Grid>
+
                                 <TextBlock Margin="0,0,0,5" Text="Single APK file" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -163,10 +304,13 @@
                                             Click="OnBrowseInstallApk"
                                             Content="Browse…" />
                                 </Grid>
-                                <Button Margin="0,12,0,0"
-                                        HorizontalAlignment="Left"
-                                        Click="OnInstallApk"
-                                        Content="Install single APK" />
+                                <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                                    <Button Click="OnInstallApk" Content="Install on selected headset" />
+                                    <Button Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnInstallApkMany"
+                                            Content="Install on checked Wi-Fi headsets" />
+                                </StackPanel>
 
                                 <Separator Margin="0,20,0,18" />
 
@@ -187,10 +331,13 @@
                                            Foreground="{StaticResource MutedTextBrush}"
                                            TextWrapping="Wrap"
                                            Text="Every top-level .apk file is installed together as one package set. Subfolders are ignored." />
-                                <Button Margin="0,12,0,0"
-                                        HorizontalAlignment="Left"
-                                        Click="OnInstallApkBundle"
-                                        Content="Install APK bundle" />
+                                <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                                    <Button Click="OnInstallApkBundle" Content="Install bundle on selected headset" />
+                                    <Button Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Click="OnInstallApkBundleMany"
+                                            Content="Install bundle on checked Wi-Fi headsets" />
+                                </StackPanel>
 
                                 <TextBlock Margin="0,20,0,5" Text="Install options" />
                                 <CheckBox x:Name="ReplaceExistingBox" IsChecked="True" Content="Reinstall over an existing package" />
@@ -262,9 +409,23 @@
                            Grid.Column="0"
                            VerticalAlignment="Center"
                            Text="Ready." />
+                <ProgressBar x:Name="OperationProgressBar"
+                             Grid.Column="1"
+                             Width="180"
+                             Height="7"
+                             Margin="18,0"
+                             VerticalAlignment="Center"
+                             Background="#E5E1D8"
+                             BorderThickness="0"
+                             Foreground="{StaticResource AccentBrush}"
+                             Focusable="False"
+                             IsHitTestVisible="False"
+                             Maximum="100"
+                             Minimum="0"
+                             Visibility="Collapsed" />
                 <TextBlock x:Name="AdbPathText"
-                           Grid.Column="1"
-                           MaxWidth="520"
+                           Grid.Column="2"
+                           MaxWidth="360"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource MutedTextBrush}"
                            TextTrimming="CharacterEllipsis" />

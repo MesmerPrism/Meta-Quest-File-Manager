@@ -25,6 +25,12 @@ action can be automated and tested.
   permission, and test-package options;
 - install every top-level APK in a selected bundle folder together through one
   atomic split-package installation;
+- enable Wi-Fi ADB from a selected USB-authorized headset, connect or disconnect
+  an enabled endpoint, and distinguish USB from Wi-Fi device rows;
+- install one APK or one complete split-package folder on multiple checked
+  Wi-Fi ADB headsets with bounded parallelism and per-headset results;
+- show honest operation progress: indeterminate when ADB provides no total,
+  phase-based for Wi-Fi setup, and target-based for parallel installs;
 - expose the same typed routes through a Windows WPF app and CLI;
 - keep the automation-oriented CLI out of the non-technical WPF interface;
 - publish a signed MSIX, App Installer update feed, guided setup helper, and
@@ -41,6 +47,8 @@ user; this is not unrestricted access to the entire headset filesystem.
 - Android SDK Platform Tools (`adb`);
 - a Meta Quest with Developer Mode enabled and this computer authorized for
   USB debugging.
+- for Wi-Fi ADB, the PC and headset must share a reachable network; a USB
+  connection is required once to enable the headset listener.
 
 ADB is located in this order:
 
@@ -59,12 +67,13 @@ dotnet run --project src/MetaQuestFileManager.App
 
 ## Install
 
-The [project download page](https://mesmerprism.github.io/Meta-Quest-File-Manager/)
+The [project download page](https://mesmerprism.com/Meta-Quest-File-Manager/)
 offers the guided Windows setup, manual signed-package route, and portable
-fallback. The guided helper requests administrator approval to trust the public
-package certificate and register the App Installer update feed. See the
-[release workflow](docs/release-workflow.md) for signature and Smart App
-Control limitations.
+fallback, along with a first-use walkthrough for Platform Tools, Quest Developer
+Mode, USB authorization, file transfer, APK work, and Wi-Fi ADB. The guided
+helper requests administrator approval to trust the public package certificate
+and register the App Installer update feed. See the [release workflow](docs/release-workflow.md)
+for signature and Smart App Control limitations.
 
 ## CLI
 
@@ -77,6 +86,10 @@ dotnet run --project src/MetaQuestFileManager.Cli -- apk list --serial <quest-se
 dotnet run --project src/MetaQuestFileManager.Cli -- apk export --serial <quest-serial> --package com.example.app --output ./com.example.app.apk
 dotnet run --project src/MetaQuestFileManager.Cli -- apk install --serial <quest-serial> --file ./example.apk
 dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle --serial <quest-serial> --folder ./example-apk-set
+dotnet run --project src/MetaQuestFileManager.Cli -- wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
+dotnet run --project src/MetaQuestFileManager.Cli -- wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
+dotnet run --project src/MetaQuestFileManager.Cli -- apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file ./example.apk --parallelism 2 --json
+dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder ./example-apk-set --parallelism 2 --json
 ```
 
 Pass `--json` to list commands for machine-readable output. Pass `--adb` to
@@ -84,20 +97,27 @@ select an explicit ADB executable without changing global machine settings.
 The Windows release archive places `MetaQuestFileManager.exe` and
 `meta-quest-file-manager.exe` beside each other. The CLI is intended for agents,
 automation, and advanced operator workflows; it is not displayed in the GUI.
+Wi-Fi state changes require an explicit confirmation in the WPF app or the
+`--confirm-wifi-adb` CLI flag. The app never resets the global ADB server.
 
 ## Design And Safety
 
 - [Architecture](docs/architecture.md)
 - [ADB scope and safety](docs/adb-scope-and-safety.md)
 - [GUI and CLI operator parity](docs/operator-cli-parity.md)
+- [Wi-Fi ADB and parallel installation](docs/wifi-adb-and-parallel-install.md)
+- [Two-headset Wi-Fi validation receipt](docs/wifi-adb-parallel-live-validation-2026-07-17.md)
+- [Progress reporting contract](docs/progress-reporting.md)
 - [Release workflow](docs/release-workflow.md)
 - [Reference intake](docs/reference-intake.md)
 
 ## Roadmap
 
 1. Add split-APK set export with a manifest and stronger package-set validation.
-2. Add diagnostics bundles and no-device UI verification.
-3. Define portable contracts for future Android and Apple host clients.
+2. Add optional TLS pairing-code support after a separate authorization and
+   compatibility review.
+3. Add diagnostics bundles and no-device UI verification.
+4. Define portable contracts for future Android and Apple host clients.
 
 ## License
 
