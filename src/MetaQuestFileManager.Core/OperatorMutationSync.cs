@@ -310,30 +310,9 @@ internal static class OperatorMutations
             return OperatorMutationObservation.Pending(kiosk.Message, "Rusty Kiosk has not completed the request.");
         }
 
-        var state = kiosk.State;
         var value = command.RustyKioskValue;
-        var confirmed = command.RustyKioskCommand switch
-        {
-            RustyKioskCommand.RequestWifiAdb => state.WifiAdbEnabled,
-            RustyKioskCommand.EnableWifiAfterBoot => state.RequestWifiAdbAfterBoot,
-            RustyKioskCommand.DisableWifiAfterBoot => !state.RequestWifiAdbAfterBoot,
-            RustyKioskCommand.DisableWifiAdb => !state.WifiAdbEnabled,
-            RustyKioskCommand.EnableAccessibility => state.AccessibilityEnabled,
-            RustyKioskCommand.DisableAccessibility => !state.AccessibilityEnabled,
-            RustyKioskCommand.LaunchKiosk => state.GuardArmed,
-            RustyKioskCommand.LaunchNormal => !state.GuardArmed,
-            RustyKioskCommand.SetSearch => string.Equals(state.Search, value ?? string.Empty, StringComparison.Ordinal),
-            RustyKioskCommand.FilterTag => string.Equals(state.TagFilter ?? string.Empty, value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
-            RustyKioskCommand.Select => string.Equals(state.SelectedKey, value, StringComparison.Ordinal),
-            RustyKioskCommand.AddTag => state.Entries.Any(entry =>
-                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
-                entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
-            RustyKioskCommand.RemoveTag => state.Entries.Any(entry =>
-                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
-                !entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
-            RustyKioskCommand.Reload or RustyKioskCommand.ExitMetaHome => true,
-            _ => true
-        };
+        var state = kiosk.State;
+        var confirmed = RustyKioskReadback.Confirms(command.RustyKioskCommand!.Value, value, kiosk);
         var observed = KioskObservedState(state);
         return confirmed
             ? OperatorMutationObservation.Confirmed(observed)
@@ -356,4 +335,43 @@ internal static class OperatorMutations
 
     private static string DisplayOverride(string value) =>
         string.IsNullOrWhiteSpace(value) ? "app" : value;
+}
+
+public static class RustyKioskReadback
+{
+    public static bool Confirms(
+        RustyKioskCommand command,
+        string? value,
+        RustyKioskOperatorResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (!result.Accepted || !result.Completed)
+        {
+            return false;
+        }
+
+        var state = result.State;
+        return command switch
+        {
+            RustyKioskCommand.RequestWifiAdb => state.WifiAdbEnabled,
+            RustyKioskCommand.EnableWifiAfterBoot => state.RequestWifiAdbAfterBoot,
+            RustyKioskCommand.DisableWifiAfterBoot => !state.RequestWifiAdbAfterBoot,
+            RustyKioskCommand.DisableWifiAdb => !state.WifiAdbEnabled,
+            RustyKioskCommand.EnableAccessibility => state.AccessibilityEnabled,
+            RustyKioskCommand.DisableAccessibility => !state.AccessibilityEnabled,
+            RustyKioskCommand.LaunchKiosk => state.GuardArmed,
+            RustyKioskCommand.LaunchNormal => !state.GuardArmed,
+            RustyKioskCommand.SetSearch => string.Equals(state.Search, value ?? string.Empty, StringComparison.Ordinal),
+            RustyKioskCommand.FilterTag => string.Equals(state.TagFilter ?? string.Empty, value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            RustyKioskCommand.Select => string.Equals(state.SelectedKey, value, StringComparison.Ordinal),
+            RustyKioskCommand.AddTag => state.Entries.Any(entry =>
+                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
+                entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
+            RustyKioskCommand.RemoveTag => state.Entries.Any(entry =>
+                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
+                !entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
+            RustyKioskCommand.Reload or RustyKioskCommand.ExitMetaHome => true,
+            _ => true
+        };
+    }
 }

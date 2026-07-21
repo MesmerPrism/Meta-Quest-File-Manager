@@ -213,7 +213,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="APKs">
+            <TabItem x:Name="ApksTab" Header="APKs (ADB default)">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -404,6 +404,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="18" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="18" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
@@ -453,6 +455,33 @@
                                                 Click="OnRefreshKiosk"
                                                 Content="Refresh status" />
                                     </StackPanel>
+                                    <TextBlock Margin="0,18,0,6"
+                                               FontFamily="Bahnschrift SemiBold"
+                                               FontSize="16"
+                                               Text="Direct link after setup" />
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Text="Enable the direct link in the headset panel, then enter its address and pairing code. This path needs Wi-Fi, but not ADB." />
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="KioskDirectEndpointBox" ToolTip="For example http://192.168.137.42:39873" />
+                                        <TextBox x:Name="KioskDirectPairingCodeBox" Grid.Column="2" ToolTip="Pairing code shown in Rusty Kiosk" />
+                                    </Grid>
+                                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                                        <Button Click="OnConnectKioskDirect" Content="Connect without ADB" />
+                                        <Button Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButton}"
+                                                Click="OnDisconnectKioskDirect"
+                                                Content="Disconnect direct link" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="KioskDirectStatusText"
+                                               Margin="0,6,0,0"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="Direct link: not connected" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2">
@@ -593,6 +622,74 @@
                         </Grid>
 
                         <Border Grid.Row="4"
+                                Padding="20"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.15*" />
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock FontFamily="Bahnschrift SemiBold"
+                                               FontSize="18"
+                                               Text="Direct file staging (no ADB)" />
+                                    <TextBlock Margin="0,6,0,10"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Text="A bounded app-owned area for transferring files. It does not expose protected app data or arbitrary headset paths." />
+                                    <ListBox x:Name="KioskDirectStagingList"
+                                             Height="150"
+                                             DisplayMemberPath="DisplayLabel"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             BorderThickness="1" />
+                                    <WrapPanel Margin="0,10,0,0">
+                                        <Button Margin="0,0,8,8" Click="OnUploadKioskDirectFile" Content="Upload file…" />
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnDownloadKioskDirectFile" Content="Download selected…" />
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnRefreshKioskDirectStaging" Content="Refresh" />
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnDeleteKioskDirectFile" Content="Delete selected" />
+                                    </WrapPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock FontFamily="Bahnschrift SemiBold"
+                                               FontSize="18"
+                                               Text="APK installation" />
+                                    <TextBlock Margin="0,6,0,10"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Text="Recommended: install from the PC over authorized ADB. This avoids an in-headset confirmation and supports unattended single or batch installs." />
+                                    <Button HorizontalAlignment="Left"
+                                            Click="OnOpenAdbApkInstaller"
+                                            Content="Use ADB installer (default)" />
+                                    <Separator Margin="0,16,0,14" />
+                                    <TextBlock FontFamily="Bahnschrift SemiBold"
+                                               Text="Optional local install" />
+                                    <TextBlock Margin="0,6,0,10"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Text="Use this only when ADB is unavailable. Choose one base APK or one complete base-and-split set. Android asks the wearer to confirm each app installation session." />
+                                    <TextBox x:Name="KioskDirectApkPathsBox"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             ToolTip="Selected APK parts" />
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnChooseKioskDirectApks" Content="Choose local-install APK(s)…" />
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnInstallKioskDirectApks" Content="Stage for headset confirmation" />
+                                        <Button Margin="0,0,8,8" Style="{StaticResource SecondaryButton}" Click="OnRefreshKioskDirectInstall" Content="Refresh receipt" />
+                                    </WrapPanel>
+                                    <TextBlock x:Name="KioskDirectInstallStatusText"
+                                               Margin="0,6,0,0"
+                                               TextWrapping="Wrap"
+                                               Text="Local install: no request sent" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="6"
                                 Padding="20"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource BorderBrush}"

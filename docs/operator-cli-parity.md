@@ -1,8 +1,9 @@
 # GUI And CLI Operator Parity
 
-Every device operation in the WPF app is represented by one immutable
-`OperatorCommand` in the core library. The WPF button and CLI both construct
-that command through the same factory and send it through the same executor.
+Every ADB device operation in the WPF app is represented by one immutable
+`OperatorCommand` in the core library. Direct Rusty Kiosk operations use the
+typed `RustyKioskDirectClient` instead. In both cases the WPF button and CLI use
+the same core method and readback model.
 The CLI is intended for agents and automation, so command text is deliberately
 not projected into the non-technical WPF interface.
 
@@ -39,6 +40,11 @@ exact tool selection is part of the test.
 | Provision installed Kiosk helper | `kiosk provision --confirm-kiosk-setup` |
 | Kiosk select/tag/launch/setup action | `kiosk command` |
 | Export/import Kiosk tag file | `kiosk tags export` / `kiosk tags import` |
+| Connect/refresh Kiosk directly | `kiosk-direct status` |
+| Direct Kiosk typed action | `kiosk-direct command` |
+| Direct tag export/import | `kiosk-direct tags export` / `kiosk-direct tags import` |
+| Direct staging list/upload/download/delete | `kiosk-direct files ...` |
+| Direct attended APK install/receipt | `kiosk-direct install` / `kiosk-direct install-status` |
 | Refresh batteries/power/performance | `device status` |
 | Keep awake / restore normal | `device keep-awake` |
 | Set / clear CPU and GPU overrides | `device performance` |
@@ -62,6 +68,10 @@ Example shapes use placeholders rather than live device or local identities:
 & '.\meta-quest-file-manager.exe' kiosk install --serial <usb-serial> --confirm-kiosk-setup --json --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' kiosk command --serial <quest-serial> --command launch-kiosk --confirm-kiosk-control --json --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <code> --json
+& '.\meta-quest-file-manager.exe' kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
+& '.\meta-quest-file-manager.exe' kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <local-file> --json
+& '.\meta-quest-file-manager.exe' kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <base-apk> --confirm-local-install --json
 & '.\meta-quest-file-manager.exe' device keep-awake --serial <quest-serial> --on --confirm-device-settings --json --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json --adb <path-to-adb>
 ```
@@ -101,3 +111,8 @@ Wi-Fi and parallel acceptance additionally proves address inspection occurs
 before `tcpip`, no daemon lifecycle command is emitted, each install remains
 serial-scoped, concurrency is bounded, duplicate targets are rejected, and
 partial failures remain visible.
+
+Direct-link acceptance uses shared Kotlin/C# HMAC vectors, rejects response-ID,
+digest, and signature mismatches, and keeps Android install receipts pending
+until the matching session reports installed or failed. It does not initialize
+ADB and has no fleet or fan-out route.

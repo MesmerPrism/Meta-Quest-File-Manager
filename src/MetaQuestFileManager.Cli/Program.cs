@@ -22,9 +22,14 @@ internal static class CliApplication
 
         try
         {
+            var command = arguments[0].ToLowerInvariant();
+            if (command == "kiosk-direct")
+            {
+                return await RunKioskDirectAsync(arguments);
+            }
+
             var client = AdbClient.CreateDefault(GetOption(arguments, "--adb"));
             var executor = new OperatorCommandExecutor(client);
-            var command = arguments[0].ToLowerInvariant();
             return command switch
             {
                 "devices" => await RunDevicesAsync(executor, arguments),
@@ -51,6 +56,201 @@ internal static class CliApplication
             return 1;
         }
     }
+
+    private static async Task<int> RunKioskDirectAsync(string[] arguments)
+    {
+        var action = RequireAction(arguments, "kiosk-direct");
+        var client = CreateKioskDirectClient(arguments);
+        var json = HasFlag(arguments, "--json");
+        switch (action)
+        {
+            case "status":
+                {
+                    var status = await client.GetStatusAsync();
+                    var kiosk = await client.InvokeKioskAsync(RustyKioskCommand.Status);
+                    if (json)
+                    {
+                        WriteJson(new { transport = "direct", status, kiosk });
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Direct link: confirmed at {status.Endpoint ?? client.Endpoint.BaseUri.ToString()}");
+                        Console.WriteLine($"Local installer: {(status.InstallerAllowed ? "wearer allowed" : "needs wearer permission")}");
+                        Console.WriteLine($"Apps: {kiosk.State.InstalledCount} installed, {kiosk.State.NotInstalledCount} not installed");
+                        Console.WriteLine($"Guard: {(kiosk.State.GuardArmed ? "armed" : "inactive")}");
+                    }
+                    return 0;
+                }
+
+            case "command":
+                {
+                    var command = RustyKioskCommands.Parse(RequireOption(arguments, "--command"));
+                    if (command is not RustyKioskCommand.Status and not RustyKioskCommand.CheckSetupHelper)
+                    {
+                        RequireConfirmation(arguments, "--confirm-kiosk-control", "Direct Rusty Kiosk state change");
+                    }
+                    var value = GetOption(arguments, "--value");
+                    var sentAt = DateTimeOffset.UtcNow;
+                    var result = await client.InvokeKioskAsync(command, value);
+                    var confirmed = RustyKioskReadback.Confirms(command, value, result);
+                    var stage = confirmed ? "confirmed" : "pending";
+                    if (json)
+                    {
+                        WriteJson(new
+                        {
+                            transport = "direct",
+                            mutation = new
+                            {
+                                stage,
+                                sentAt,
+                                readbackAt = DateTimeOffset.UtcNow,
+                                headsetReadback = true,
+                                desired = command.ToWireName()
+                            },
+                            result
+                        });
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Sent: {command.ToWireName()}");
+                        Console.WriteLine($"Sync: {stage} · {result.Message}");
+                        if (!confirmed)
+                        {
+                            Console.WriteLine("Refresh status after the wearer responds or the headset settles.");
+                        }
+                    }
+                    return confirmed ? 0 : 3;
+                }
+
+            case "tags":
+                {
+                    if (arguments.Length < 3 || arguments[2].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        throw new ArgumentException("The kiosk-direct tags command requires export or import.");
+                    }
+                    var tagsAction = arguments[2].ToLowerInvariant();
+                    if (tagsAction == "export")
+                    {
+                        var output = Path.GetFullPath(RequireOption(arguments, "--output"));
+                        await File.WriteAllBytesAsync(output, await client.ReadTagsAsync());
+                        Console.WriteLine(output);
+                        return 0;
+                    }
+                    if (tagsAction == "import")
+                    {
+                        RequireConfirmation(arguments, "--confirm-kiosk-control", "Direct tag-file replacement");
+                        var input = Path.GetFullPath(RequireOption(arguments, "--file"));
+                        await client.WriteTagsAsync(await File.ReadAllBytesAsync(input));
+                        var result = await client.InvokeKioskAsync(RustyKioskCommand.Reload);
+                        if (json)
+                        {
+                            WriteJson(new { transport = "direct", stage = "confirmed", result });
+                        }
+                        else
+                        {
+                            Console.WriteLine("Sync: confirmed · tag file validated, activated, and catalogue reloaded.");
+                        }
+                        return 0;
+                    }
+                    throw new ArgumentException($"Unknown kiosk-direct tags action: {tagsAction}");
+                }
+
+            case "files":
+                {
+                    if (arguments.Length < 3 || arguments[2].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        throw new ArgumentException("The kiosk-direct files command requires list, upload, download, or delete.");
+                    }
+                    var fileAction = arguments[2].ToLowerInvariant();
+                    if (fileAction == "list")
+                    {
+                        var files = await client.ListStagingAsync();
+                        if (json) WriteJson(files);
+                        else foreach (var file in files) Console.WriteLine($"{file.Bytes}\t{file.Name}");
+                        return 0;
+                    }
+                    if (fileAction == "upload")
+                    {
+                        var result = await client.UploadToStagingAsync(
+                            RequireOption(arguments, "--file"),
+                            GetOption(arguments, "--name"));
+                        if (json) WriteJson(new { transport = "direct", stage = "confirmed", result });
+                        else Console.WriteLine($"Sync: confirmed · {result.Name} · {result.Bytes} bytes");
+                        return 0;
+                    }
+                    if (fileAction == "download")
+                    {
+                        var output = await client.DownloadFromStagingAsync(
+                            RequireOption(arguments, "--name"),
+                            RequireOption(arguments, "--output"),
+                            overwrite: HasFlag(arguments, "--overwrite"));
+                        Console.WriteLine($"Sync: confirmed · {output}");
+                        return 0;
+                    }
+                    if (fileAction == "delete")
+                    {
+                        RequireConfirmation(arguments, "--confirm-file-delete", "Direct staged-file deletion");
+                        var name = RequireOption(arguments, "--name");
+                        await client.DeleteStagedAsync(name);
+                        Console.WriteLine($"Sync: confirmed · deleted staged file {name}");
+                        return 0;
+                    }
+                    throw new ArgumentException($"Unknown kiosk-direct files action: {fileAction}");
+                }
+
+            case "install":
+                {
+                    RequireConfirmation(arguments, "--confirm-local-install", "Wearer-confirmed local APK installation");
+                    var paths = GetOptions(arguments, "--file");
+                    if (paths.Count == 0)
+                    {
+                        throw new ArgumentException("Pass one --file per APK part.");
+                    }
+                    foreach (var path in paths)
+                    {
+                        await client.UploadToStagingAsync(path);
+                    }
+                    var requestId = "install_" + Guid.NewGuid().ToString("N");
+                    var receipt = await client.RequestInstallAsync(
+                        paths.Select(Path.GetFileName).Select(static name => name!).ToArray(),
+                        requestId);
+                    if (json)
+                    {
+                        WriteJson(new { transport = "direct", stage = DirectInstallStage(receipt), receipt });
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Sent: Android install request {requestId}");
+                        Console.WriteLine($"Sync: {DirectInstallStage(receipt)} · {receipt.State} · {receipt.Message}");
+                    }
+                    return receipt.Installed ? 0 : receipt.Failed ? 1 : 3;
+                }
+
+            case "install-status":
+                {
+                    var receipt = await client.ReadInstallReceiptAsync(RequireOption(arguments, "--request-id"));
+                    if (json) WriteJson(new { transport = "direct", stage = DirectInstallStage(receipt), receipt });
+                    else Console.WriteLine($"Sync: {DirectInstallStage(receipt)} · {receipt.State} · {receipt.Message}");
+                    return receipt.Installed ? 0 : receipt.Failed ? 1 : 3;
+                }
+
+            default:
+                throw new ArgumentException($"Unknown kiosk-direct action: {action}");
+        }
+    }
+
+    private static RustyKioskDirectClient CreateKioskDirectClient(string[] arguments)
+    {
+        var endpoint = RequireOption(arguments, "--endpoint");
+        var pairingCode = GetOption(arguments, "--pairing-code") ??
+            Environment.GetEnvironmentVariable("RUSTY_KIOSK_PAIRING_CODE") ??
+            throw new ArgumentException(
+                "Missing --pairing-code. It may also be supplied through RUSTY_KIOSK_PAIRING_CODE.");
+        return new RustyKioskDirectClient(RustyKioskDirectEndpoint.Parse(endpoint, pairingCode));
+    }
+
+    private static string DirectInstallStage(RustyKioskDirectInstallReceipt receipt) =>
+        receipt.Installed ? "confirmed" : receipt.Failed ? "failed" : "pending";
 
     private static async Task<int> RunDevicesAsync(
         OperatorCommandExecutor executor,
@@ -780,6 +980,16 @@ internal static class CliApplication
               meta-quest-file-manager kiosk command --serial <serial> --command <typed-command> [--value <text>] [--confirm-kiosk-control] [--json]
               meta-quest-file-manager kiosk tags export --serial <serial> --output <app-tags.v1.json>
               meta-quest-file-manager kiosk tags import --serial <serial> --file <app-tags.v1.json> --confirm-kiosk-control
+              meta-quest-file-manager kiosk-direct status --endpoint <http://quest-ip:39873> --pairing-code <code> [--json]
+              meta-quest-file-manager kiosk-direct command --endpoint <url> --pairing-code <code> --command <typed-command> [--value <text>] [--confirm-kiosk-control] [--json]
+              meta-quest-file-manager kiosk-direct tags export --endpoint <url> --pairing-code <code> --output <app-tags.v1.json>
+              meta-quest-file-manager kiosk-direct tags import --endpoint <url> --pairing-code <code> --file <app-tags.v1.json> --confirm-kiosk-control
+              meta-quest-file-manager kiosk-direct files list --endpoint <url> --pairing-code <code> [--json]
+              meta-quest-file-manager kiosk-direct files upload --endpoint <url> --pairing-code <code> --file <path> [--name <staged-name>]
+              meta-quest-file-manager kiosk-direct files download --endpoint <url> --pairing-code <code> --name <staged-name> --output <path> [--overwrite]
+              meta-quest-file-manager kiosk-direct files delete --endpoint <url> --pairing-code <code> --name <staged-name> --confirm-file-delete
+              meta-quest-file-manager kiosk-direct install --endpoint <url> --pairing-code <code> --file <base.apk> [--file <split.apk> ...] --confirm-local-install [--json]
+              meta-quest-file-manager kiosk-direct install-status --endpoint <url> --pairing-code <code> --request-id <id> [--json]
               meta-quest-file-manager device status --serial <serial> [--json]
               meta-quest-file-manager device keep-awake --serial <serial> <--on|--off> [--duration-ms <n>] --confirm-device-settings
               meta-quest-file-manager device performance --serial <serial> [--cpu <0-5>] [--gpu <0-5>] [--clear] --confirm-device-settings
@@ -793,12 +1003,19 @@ internal static class CliApplication
 
             Bundle install reads every top-level .apk file in the selected folder and
             sends the complete set through one serial-scoped adb install-multiple call.
+            The apk commands are the default unattended installation route: after this
+            PC is ADB-authorized, they do not require confirmation inside the headset.
             Parallel routes require at least two distinct connected Wi-Fi ADB serials,
             run one serial-scoped install per headset, and report partial failures.
             Enabling Wi-Fi ADB requires a USB-connected authorized headset and explicit
             operator confirmation. Connect/disconnect never reset the global ADB server.
             Rusty Kiosk is optional. Its typed host commands require the installed
             DUMP-protected operator provider and preserve Meta's attended permission prompts.
+            The kiosk-direct commands use Rusty Kiosk's wearer-enabled, HMAC-authenticated
+            local link and do not initialize ADB. The pairing code may be supplied through
+            RUSTY_KIOSK_PAIRING_CODE. Direct files are confined to app-owned staging, and
+            direct PackageInstaller is an attended fallback that stays pending until
+            Android records one wearer decision for the app installation session.
             Keep-awake, proximity, and CPU/GPU changes require explicit confirmation and
             report effective readback; --clear restores app-controlled performance levels.
             Split APK packages are refused by the single-APK export command.

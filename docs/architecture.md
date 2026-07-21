@@ -2,9 +2,10 @@
 
 ## Decision
 
-Use a dependency-light .NET core for ADB operations, a CLI for complete
-automation parity, and a thin Windows WPF projection. The first release is a
-focused file and APK transfer tool, not another general Quest runtime console.
+Use a dependency-light .NET core for both serial-scoped ADB operations and the
+bounded Rusty Kiosk direct protocol, a CLI for complete automation parity, and
+a thin Windows WPF projection. This is a focused file/APK/Kiosk operator, not a
+general Quest runtime console or fleet manager.
 
 ## Scope
 
@@ -17,14 +18,19 @@ focused file and APK transfer tool, not another general Quest runtime console.
 - Bounded parallel single-APK and complete split-set installation across
   distinct Wi-Fi ADB endpoints, with one result per target.
 - Windows GUI and CLI projections.
+- Optional single-headset Rusty Kiosk direct transport for typed Kiosk control,
+  fixed tags, app-owned staging, and attended PackageInstaller sessions.
 - Public CI, Pages, release archives, and boundary validation.
 
 ## Non-scope
 
 - Protected app-data access, rooting, entitlement bypass, or DRM handling.
 - App data, saves, OBB, or asset-pack backup.
-- File deletion, package uninstall, clear-data, or ADB daemon lifecycle.
-- TLS pairing-code discovery, network scanning, or persistent pairing secrets.
+- General remote-path deletion, package uninstall, clear-data, or ADB daemon
+  lifecycle. Deletion inside Rusty Kiosk's explicitly bounded app-owned staging
+  area is supported.
+- TLS, network scanning, fleet discovery, online relays, or multi-device direct
+  orchestration.
 - Bundled Android tools, APK catalogs, private packages, or live evidence.
 - Android and Apple host applications in the first release.
 
@@ -43,13 +49,13 @@ Parallel installation owns only bounded orchestration. Android package-manager
 transactions remain independent per headset.
 
 Rusty Kiosk owns catalog/tag semantics, normal versus guarded launch, the
-Accessibility watchdog, and user-facing Wi-Fi setup requests. The file manager
-owns ADB transport, optional installation/provisioning, desktop projection, and
-reviewed Quest settings. Host control crosses only Kiosk's exported
-`android.permission.DUMP` provider. Provider v2 accepts fixed typed commands
-and bounded tag chunks; tag chunks are ordered, capped at 256 KiB, SHA-256
-verified, schema validated, and atomically activated. No host path, component,
-intent action, or shell text crosses that boundary.
+Accessibility watchdog, user-facing opt-ins, app-owned staging, and Android
+PackageInstaller sessions. The file manager owns ADB fallback/bootstrap and the
+desktop/CLI projection. ADB host control crosses only Kiosk's exported
+`android.permission.DUMP` provider. Direct control crosses schema
+`rusty.kiosk.direct_operator.v1`: expiring HMAC requests, persisted replay IDs,
+signed readbacks, fixed endpoints, bounded filenames, and no shell, component,
+intent, or arbitrary path input.
 
 ## Interfaces
 
@@ -70,6 +76,9 @@ are shared by WPF and CLI. Dispatch records `sent`; the operation then remains
 `pending`; only command-specific evidence can produce `confirmed`. Wi-Fi prompt
 admission stays pending until a later Kiosk status reports enabled. Five-minute
 non-matches become timed out but remain reconcilable on later refresh.
+Direct commands use the same desired/effective-state matcher. Direct file
+mutations confirm only after signed byte/hash readback; local installs stay
+pending until the matching Android receipt reports installed or failed.
 
 The CLI is the contract surface for agents and future GUI, Android-host, and
 Apple-host adapters. Any new GUI action must first have an equivalent typed
@@ -137,6 +146,9 @@ packages, private behavior, generated binaries, or broad runtime features.
 | Optimistic state after a prompt | Keep the receipt pending until later headset status matches. |
 | Scoped-storage drift breaks tag files | Transfer fixed provider chunks, verify SHA-256/schema, then atomically hotload. |
 | Optional Kiosk breaks file tools | Keep Kiosk detection and commands isolated to its tab/routes. |
+| Direct link impersonation or replay | HMAC every request/response, enforce 90-second expiry, persist bounded replay IDs, and permit on-headset code rotation/revocation. |
+| Direct mode becomes raw device access | Restrict it to fixed Kiosk routes and one app-owned staging directory; keep general paths in explicit ADB tools. |
+| Optimistic local APK success | Require Android PackageInstaller receipt; keep wearer permission/confirmation as pending. |
 | Hidden Wi-Fi/daemon mutation | Require approval, scope `tcpip` to one USB serial, scope connect/disconnect to one endpoint, and never reset the ADB server. |
 | Unbounded or ambiguous fan-out | Require two distinct Wi-Fi serials, cap concurrency at 16, and retain every target result. |
 | Misleading progress | Use only owned phase/target totals; show every other ADB operation as indeterminate. |
@@ -147,6 +159,6 @@ packages, private behavior, generated binaries, or broad runtime features.
 ## Next Slice
 
 Add diagnostics bundles, richer remote metadata, verified folder transfer,
-and optional TLS pairing only after a separate authority review. Split APK
+and encrypted direct transport only after a separate authority review. Split APK
 export remains a later explicit format with all parts and a manifest installed
 as one set.

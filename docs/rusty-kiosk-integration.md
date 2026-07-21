@@ -13,13 +13,16 @@ when the bundle is absent or Kiosk is never installed.
 4. The file manager installs the same-signer setup helper, grants only that
    helper `WRITE_SECURE_SETTINGS`, installs Kiosk, and reads back both package
    and permission states.
-5. Choose **Request Wi-Fi ADB**. Meta shows its own permission prompt. The PC
-   receipt remains pending until the wearer accepts and Kiosk reports Wi-Fi ADB
-   enabled.
-6. Optionally enable **Ask after restart**. After a reboot, Kiosk can request
+5. In the headset panel, enable **Direct PC link**, then enter the displayed
+   address and pairing code in the Windows Kiosk tab. Routine Kiosk commands,
+   tags, app-owned staging, and optional attended APK installs no longer
+   require ADB. The PC's ADB installer remains the default APK route.
+6. Wi-Fi ADB remains optional. If requested, Meta shows its own permission
+   prompt and the PC receipt remains pending until wearer acceptance/readback.
+7. Optionally enable **Ask after restart**. After a reboot, Kiosk can request
    Meta's Wi-Fi ADB allowance again; it cannot accept that allowance for the
    wearer. USB-C remains the recovery path if no ADB transport is reachable.
-7. Enable Accessibility only when guarded launches are wanted. It is a separate
+8. Enable Accessibility only when guarded launches are wanted. It is a separate
    explicit choice and can be disabled again from either surface.
 
 ## Desktop Functions
@@ -34,6 +37,18 @@ without a package. Import/export uses provider chunks rather than direct access
 to `/sdcard/Android/data`: each chunk is bounded, the complete file is capped at
 256 KiB, SHA-256 is checked, the schema is parsed, and activation is atomic.
 
+Direct mode also exposes one app-owned staging area. Windows can list, upload,
+download, and delete its bounded filenames. An APK install names one to 32
+staged `.apk` parts and creates one Android PackageInstaller session. Android's
+visible per-app installer permission and confirm/cancel surface remain wearer
+owned; a request is pending until its matching receipt becomes installed or
+failed. Trusting Kiosk as an install source is a one-time grant, but arbitrary
+first-time app installs can still require one confirmation per package session;
+base and split APKs for one app share that session. Therefore the **APKs (ADB
+default)** tab is the normal unattended and batch-install path. General
+shell-visible headset paths, package export, advanced install flags, CPU/GPU
+settings, and diagnostics remain optional ADB functions.
+
 ## Authority Boundary
 
 The release host surface is
@@ -47,6 +62,14 @@ headset paths.
 Kiosk retains ownership of launch and watchdog behavior. The setup helper owns
 the small secure-settings operations. The Windows app owns ADB transport and
 operator confirmation.
+
+The optional direct surface is `rusty.kiosk.direct_operator.v1` on port 39873.
+It accepts expiring HMAC-SHA-256 envelopes, retains replay IDs, verifies request
+bodies, and signs every authenticated response. It has no raw shell, arbitrary
+intent/component, protected-data path, or device-settings endpoint. HTTP v1 is
+authenticated and integrity-protected but not encrypted; use a trusted network
+or private Windows hotspot. This is a single-headset local link, not fleet
+management.
 
 ## Sent, Pending, Confirmed
 

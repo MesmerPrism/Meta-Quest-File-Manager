@@ -299,6 +299,10 @@ p {
   grid-template-columns: repeat(2, 1fr);
 }
 
+.compact-grid {
+  margin-top: 34px;
+}
+
 code {
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 0.9em;

@@ -29,6 +29,9 @@ action can be automated and tested.
   an enabled endpoint, and distinguish USB from Wi-Fi device rows;
 - install one APK or one complete split-package folder on multiple checked
   Wi-Fi ADB headsets with bounded parallelism and per-headset results;
+- use the PC's authorized ADB connection as the default APK installation path,
+  avoiding an in-headset confirmation for each package during unattended or
+  batch installs;
 - show honest operation progress: indeterminate when ADB provides no total,
   phase-based for Wi-Fi setup, and target-based for parallel installs;
 - optionally install and provision the separately licensed Rusty Kiosk app and
@@ -37,6 +40,11 @@ action can be automated and tested.
   installed on this headset, hotload tag files, and launch normally or guarded;
 - request/disable Wi-Fi ADB, manage its after-restart prompt preference, and
   enable/disable Kiosk Accessibility through fixed typed routes;
+- after one-time setup, connect directly to the wearer-enabled Rusty Kiosk
+  link for the same search/tag/launch/guard controls without routine ADB;
+- list, upload, download, and delete files in Rusty Kiosk's bounded app-owned
+  staging area, then optionally submit one base or base-and-split APK set to
+  Android's wearer-confirmed PackageInstaller when ADB is unavailable;
 - show headset/controller batteries, keep awake or restore normal power, and
   set or clear fixed Quest CPU/GPU levels;
 - track every PC mutation as sent, pending, then headset-confirmed (or failed/
@@ -54,11 +62,14 @@ user; this is not unrestricted access to the entire headset filesystem.
 
 - Windows 10 version 2004 or later;
 - .NET 10 SDK for source builds;
-- Android SDK Platform Tools (`adb`);
+- Android SDK Platform Tools (`adb`) for bootstrap, general shared-path tools,
+  package export, advanced installs, device settings, and diagnostics;
 - a Meta Quest with Developer Mode enabled and this computer authorized for
   USB debugging.
 - for Wi-Fi ADB, the PC and headset must share a reachable network; a USB
   connection is required once to enable the headset listener.
+- for Rusty Kiosk direct mode, an installed Kiosk 0.6.0+ on the same trusted
+  network; direct mode itself does not require ADB.
 
 ADB is located in this order:
 
@@ -104,6 +115,10 @@ dotnet run --project src/MetaQuestFileManager.Cli -- kiosk status --serial <ques
 dotnet run --project src/MetaQuestFileManager.Cli -- kiosk install --serial <usb-serial> --confirm-kiosk-setup --json
 dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags export --serial <quest-serial> --output ./app-tags.v1.json
 dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags import --serial <quest-serial> --file ./app-tags.v1.json --confirm-kiosk-control --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <on-headset-code> --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk --confirm-local-install --json
 dotnet run --project src/MetaQuestFileManager.Cli -- device status --serial <quest-serial> --json
 dotnet run --project src/MetaQuestFileManager.Cli -- device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
 dotnet run --project src/MetaQuestFileManager.Cli -- device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
@@ -119,6 +134,17 @@ Wi-Fi state changes require an explicit confirmation in the WPF app or the
 Kiosk setup/control and device settings use their own confirmation flags.
 Mutation JSON contains desired and observed state plus its transition history.
 A Meta permission prompt can legitimately remain pending until wearer response.
+Direct mode uses expiring HMAC-signed requests, replay IDs, body hashes, and
+signed responses. Its v1 HTTP bodies are not encrypted, so use a trusted local
+network or a private Windows hotspot. The pairing code can be supplied through
+`RUSTY_KIOSK_PAIRING_CODE` instead of a command-line argument.
+
+The **APKs (ADB default)** tab is the normal installation route. Once the PC's
+ADB key is authorized, it can install multiple packages without repeated
+in-headset confirmation. Kiosk's direct local installer is an attended fallback:
+the one-time “install unknown apps” grant allows Kiosk to request installs, but
+Android can still require one confirmation for every app installation session.
+A base APK and its split APKs are submitted together as one session.
 
 ## Design And Safety
 
@@ -135,7 +161,7 @@ A Meta permission prompt can legitimately remain pending until wearer response.
 ## Roadmap
 
 1. Add split-APK set export with a manifest and stronger package-set validation.
-2. Add optional TLS pairing-code support after a separate authorization and
+2. Add transport encryption after a separate protocol-version and Horizon
    compatibility review.
 3. Add diagnostics bundles and no-device UI verification.
 4. Define portable contracts for future Android and Apple host clients.
