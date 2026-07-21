@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Download, install, and learn Meta Quest File Manager for Windows.">
+  <meta name="description" content="Download, install, and learn Meta Quest File Manager for Windows, including its optional Rusty Kiosk controls.">
   <meta name="theme-color" content="#f3f1ec">
   <title>Meta Quest File Manager</title>
   <link rel="icon" href="folder-icon.svg" type="image/svg+xml">
@@ -23,6 +23,7 @@
       <a href="#install">Install</a>
       <a href="#prepare">Prepare Quest</a>
       <a href="#first-use">Use the app</a>
+      <a href="#kiosk">Rusty Kiosk</a>
       <a href="#help">Help</a>
       <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager">Source</a>
     </nav>
@@ -32,7 +33,7 @@
     <section class="intro">
       <div>
         <h1>Move files and APKs between Windows and Quest.</h1>
-        <p>Browse the storage that Android exposes through ADB, copy files in either direction, install your own APKs on one or several headsets, and retrieve sideloaded single-APK apps.</p>
+        <p>Browse the storage that Android exposes through ADB, copy files in either direction, install your own APKs on one or several headsets, retrieve sideloaded single-APK apps, and optionally manage Rusty Kiosk.</p>
         <div class="actions">
           <a class="primary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">Download guided setup</a>
           <a class="secondary" href="#install">Read the install guide</a>
@@ -158,6 +159,14 @@
           <h3>Export a sideloaded APK</h3>
           <p>Refresh the third-party package list, select a package, and choose <strong>Export selected package</strong>. Export succeeds only when Android reports one APK file and also writes a SHA-256 checksum.</p>
         </article>
+        <article>
+          <h3>Check power and performance</h3>
+          <p>Open <strong>Device</strong> to read headset and controller battery state. Keep-awake and fixed CPU/GPU controls are explicit ADB maintenance actions with a restore or clear route.</p>
+        </article>
+        <article>
+          <h3>Use Rusty Kiosk only if wanted</h3>
+          <p>The <strong>Rusty Kiosk</strong> tab is optional. Files, APKs, Wi-Fi ADB, and device status continue to work when Kiosk is absent or never installed.</p>
+        </article>
       </div>
     </section>
 
@@ -192,6 +201,54 @@
       <p class="notice">Wi-Fi ADB may stop after a headset reboot, network change, or authorization change. Reconnect by USB and enable it again when needed. The app does not restart the global ADB server.</p>
     </section>
 
+    <section id="kiosk" class="section guide-section">
+      <h2>Optional Rusty Kiosk setup</h2>
+      <p class="section-intro">Rusty Kiosk is a separate open-source Spatial SDK app. It adds an on-headset app catalogue, tags, normal and guarded launch, passthrough controls, and an optional direct PC link. Nothing in this section is required for ordinary file-manager use.</p>
+      <ol class="steps">
+        <li>
+          <div>
+            <h3>Connect once by USB</h3>
+            <p>Authorize the headset as described above, select it in the app, open <strong>Rusty Kiosk</strong>, and choose <strong>Install and provision (USB)</strong>. The app installs the main APK and its same-signer setup helper, grants only the helper's narrow setup permission, and confirms the resulting package state.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Choose the capabilities you want</h3>
+            <p>Inside Rusty Kiosk, open <strong>User controls</strong>. Accessibility enables the soft guard; the direct PC link enables local Kiosk management without routine ADB; Wi-Fi ADB remains a separate maintenance option. Each is visibly labeled and independently reversible.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Pair the direct link</h3>
+            <p>On a trusted shared network or private Windows hotspot, enable <strong>Direct PC link</strong>. Enter its displayed address and pairing code in the Windows Kiosk tab, then connect. The code can be rotated from the headset at any time.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Manage apps and tags</h3>
+            <p>Search the complete Kiosk catalogue, filter or edit tags, retain named entries for apps that are not installed, import or export the tag file, and choose normal or guarded launch. The same fixed operations are available through USB/Wi-Fi ADB or the paired direct link.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Prefer ADB for batch APK installs</h3>
+            <p>The normal APK tab can install several packages without repeated in-headset approval after the PC is authorized. Kiosk's direct installer is an attended fallback: Android may still ask the wearer to confirm each app installation session.</p>
+          </div>
+        </li>
+      </ol>
+      <div class="feature-grid compact-grid">
+        <article>
+          <h3>Soft guard, not lock task</h3>
+          <p>The first two Home presses restore a guarded app. A third within five seconds returns to Rusty Kiosk. From Rusty Kiosk, Home reaches Meta Home normally.</p>
+        </article>
+        <article>
+          <h3>Confirmed state</h3>
+          <p>PC mutations progress through <strong>sent</strong>, <strong>pending</strong>, and <strong>confirmed</strong>. A prompt or successful command alone is not treated as effective headset state.</p>
+        </article>
+      </div>
+      <p class="support-links">Read the dedicated <a href="https://mesmerprism.com/Rusty-Kiosk/">Rusty Kiosk onboarding guide</a> or inspect the <a href="https://github.com/MesmerPrism/Rusty-Kiosk">AGPL-licensed source</a>.</p>
+    </section>
+
     <section id="help" class="section help-section">
       <h2>Common questions</h2>
       <div class="help-list">
@@ -214,6 +271,14 @@
         <details>
           <summary>Can it browse the whole Quest filesystem?</summary>
           <p>No. Quest has a normal Android folder hierarchy, but ADB shell access is permission-limited. The app shows only paths Android permits and begins in shared storage at <code>/sdcard</code>.</p>
+        </details>
+        <details>
+          <summary>Do I need Rusty Kiosk or the direct link?</summary>
+          <p>No. They are optional. The normal file browser, APK tools, Wi-Fi ADB, and device controls remain available through an authorized ADB connection without installing or enabling Rusty Kiosk.</p>
+        </details>
+        <details>
+          <summary>Why is a Kiosk action still pending?</summary>
+          <p>Some actions require a visible Meta or Android decision. The PC keeps them pending until the headset reports the requested effective state, and a later refresh can reconcile the result.</p>
         </details>
       </div>
       <p class="support-links">For release checksums and known issues, visit <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases">GitHub Releases</a> or <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/issues">open an issue</a>.</p>

@@ -1,0 +1,377 @@
+using System.Collections.ObjectModel;
+
+namespace MetaQuestFileManager.Core;
+
+public enum OperatorMutationStage
+{
+    Sent,
+    Pending,
+    Confirmed,
+    Failed,
+    TimedOut
+}
+
+public sealed record OperatorMutationTransition(
+    OperatorMutationStage Stage,
+    DateTimeOffset At,
+    string Message);
+
+public sealed record OperatorMutationReceipt(
+    string OperationId,
+    OperatorCommandKind CommandKind,
+    string Target,
+    string DesiredState,
+    OperatorMutationStage Stage,
+    string ObservedState,
+    bool HeadsetReadback,
+    IReadOnlyList<OperatorMutationTransition> Transitions)
+{
+    public bool IsTerminal => Stage is
+        OperatorMutationStage.Confirmed or
+        OperatorMutationStage.Failed;
+}
+
+public static class OperatorMutationReconciler
+{
+    public static OperatorMutationReceipt Reconcile(
+        OperatorMutationReceipt receipt,
+        OperatorCommand originalCommand,
+        OperatorExecutionResult latestReadback)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        ArgumentNullException.ThrowIfNull(originalCommand);
+        ArgumentNullException.ThrowIfNull(latestReadback);
+        if (receipt.IsTerminal)
+        {
+            return receipt;
+        }
+
+        var observation = OperatorMutations.Observe(originalCommand, latestReadback);
+        var sentAt = receipt.Transitions.FirstOrDefault(static transition =>
+            transition.Stage == OperatorMutationStage.Sent)?.At;
+        if (observation.Stage == OperatorMutationStage.Pending &&
+            sentAt is not null &&
+            DateTimeOffset.UtcNow - sentAt > TimeSpan.FromMinutes(5))
+        {
+            observation = observation with
+            {
+                Stage = OperatorMutationStage.TimedOut,
+                Message = "No matching state was observed within five minutes; the operation remains reconcilable on refresh."
+            };
+        }
+        var transitions = receipt.Transitions
+            .Append(new OperatorMutationTransition(
+                observation.Stage,
+                DateTimeOffset.UtcNow,
+                observation.Message))
+            .ToArray();
+        return receipt with
+        {
+            Stage = observation.Stage,
+            ObservedState = observation.ObservedState,
+            HeadsetReadback = observation.HeadsetReadback,
+            Transitions = new ReadOnlyCollection<OperatorMutationTransition>(transitions)
+        };
+    }
+}
+
+internal sealed class OperatorMutationTracker
+{
+    private readonly OperatorCommand _command;
+    private readonly IProgress<OperatorProgress>? _progress;
+    private readonly List<OperatorMutationTransition> _transitions = [];
+
+    public OperatorMutationTracker(OperatorCommand command, IProgress<OperatorProgress>? progress)
+    {
+        _command = command;
+        _progress = progress;
+        OperationId = "pc-" + Guid.NewGuid().ToString("N");
+    }
+
+    public string OperationId { get; }
+
+    public void Sent()
+    {
+        var message = $"Sent {OperatorMutations.DesiredState(_command)} to the headset.";
+        Add(OperatorMutationStage.Sent, message);
+    }
+
+    public void Pending()
+    {
+        const string message = "Pending headset result and effective-state readback.";
+        Add(OperatorMutationStage.Pending, message);
+    }
+
+    public OperatorMutationReceipt Complete(OperatorMutationObservation observation)
+    {
+        Add(observation.Stage, observation.Message);
+        return new OperatorMutationReceipt(
+            OperationId,
+            _command.Kind,
+            _command.Serial ?? _command.WifiHost ?? "multiple-headsets",
+            OperatorMutations.DesiredState(_command),
+            observation.Stage,
+            observation.ObservedState,
+            observation.HeadsetReadback,
+            new ReadOnlyCollection<OperatorMutationTransition>(_transitions.ToArray()));
+    }
+
+    public OperatorMutationReceipt Failed(Exception exception)
+    {
+        var stage = exception is TimeoutException
+            ? OperatorMutationStage.TimedOut
+            : OperatorMutationStage.Failed;
+        var observation = new OperatorMutationObservation(
+            stage,
+            exception.Message,
+            "No matching effective state was confirmed.",
+            HeadsetReadback: false);
+        return Complete(observation);
+    }
+
+    private void Add(OperatorMutationStage stage, string message)
+    {
+        _transitions.Add(new OperatorMutationTransition(stage, DateTimeOffset.UtcNow, message));
+        _progress?.Report(new OperatorProgress(
+            "mutation-" + stage.ToString().ToLowerInvariant(),
+            $"{stage}: {message}",
+            (int)stage,
+            (int)OperatorMutationStage.Confirmed));
+    }
+}
+
+internal sealed record OperatorMutationObservation(
+    OperatorMutationStage Stage,
+    string Message,
+    string ObservedState,
+    bool HeadsetReadback)
+{
+    public static OperatorMutationObservation Confirmed(string observedState) =>
+        new(
+            OperatorMutationStage.Confirmed,
+            "The headset reported the requested effective state.",
+            observedState,
+            HeadsetReadback: true);
+
+    public static OperatorMutationObservation Pending(string observedState, string message) =>
+        new(OperatorMutationStage.Pending, message, observedState, HeadsetReadback: true);
+}
+
+internal static class OperatorMutations
+{
+    public static bool RequiresHeadsetStateChange(OperatorCommand command) => command.Kind switch
+    {
+        OperatorCommandKind.PushFile or
+        OperatorCommandKind.InstallApk or
+        OperatorCommandKind.InstallApkBundle or
+        OperatorCommandKind.EnableWifiAdb or
+        OperatorCommandKind.DisconnectWifiAdb or
+        OperatorCommandKind.InstallApkMany or
+        OperatorCommandKind.InstallApkBundleMany or
+        OperatorCommandKind.InstallRustyKiosk or
+        OperatorCommandKind.ProvisionRustyKiosk or
+        OperatorCommandKind.PushRustyKioskTags or
+        OperatorCommandKind.SetQuestKeepAwake or
+        OperatorCommandKind.SetQuestPerformance => true,
+        OperatorCommandKind.InvokeRustyKiosk => command.RustyKioskCommand is not
+            RustyKioskCommand.Status and not
+            RustyKioskCommand.CheckSetupHelper,
+        _ => false
+    };
+
+    public static string DesiredState(OperatorCommand command) => command.Kind switch
+    {
+        OperatorCommandKind.PushFile => $"file present at {command.RemotePath}",
+        OperatorCommandKind.InstallApk => $"APK installed: {Path.GetFileName(command.LocalPath)}",
+        OperatorCommandKind.InstallApkBundle => "APK package set installed",
+        OperatorCommandKind.EnableWifiAdb => $"Wi-Fi ADB enabled on port {command.WifiPort}",
+        OperatorCommandKind.DisconnectWifiAdb => "Wi-Fi ADB endpoint disconnected from this PC",
+        OperatorCommandKind.InstallApkMany => "APK installed on every selected headset",
+        OperatorCommandKind.InstallApkBundleMany => "APK package set installed on every selected headset",
+        OperatorCommandKind.InstallRustyKiosk => "Rusty Kiosk installed and USB authority provisioned",
+        OperatorCommandKind.ProvisionRustyKiosk => "Rusty Kiosk USB authority provisioned",
+        OperatorCommandKind.PushRustyKioskTags => "tag file hotloaded by Rusty Kiosk",
+        OperatorCommandKind.SetQuestKeepAwake => command.Enabled == true
+            ? "keep-awake enabled"
+            : "normal power policy restored",
+        OperatorCommandKind.SetQuestPerformance => command.ClearPerformance
+            ? "application-controlled CPU/GPU levels restored"
+            : $"CPU/GPU overrides set to {command.CpuLevel?.ToString() ?? "unchanged"}/{command.GpuLevel?.ToString() ?? "unchanged"}",
+        OperatorCommandKind.InvokeRustyKiosk => KioskDesiredState(command),
+        _ => command.Kind.ToString()
+    };
+
+    public static OperatorMutationObservation Observe(
+        OperatorCommand command,
+        OperatorExecutionResult result)
+    {
+        return command.Kind switch
+        {
+            OperatorCommandKind.InstallRustyKiosk => ObserveKioskInstall(result),
+            OperatorCommandKind.ProvisionRustyKiosk => ObserveKioskProvision(result),
+            OperatorCommandKind.InvokeRustyKiosk => ObserveKioskCommand(command, result),
+            OperatorCommandKind.PushRustyKioskTags => ObserveKioskTagHotload(result),
+            OperatorCommandKind.SetQuestKeepAwake => ObserveKeepAwake(command, result),
+            OperatorCommandKind.SetQuestPerformance => ObservePerformance(command, result),
+            OperatorCommandKind.InstallApkMany or OperatorCommandKind.InstallApkBundleMany =>
+                result.ParallelApkInstallResult is { Succeeded: true } parallel
+                    ? OperatorMutationObservation.Confirmed(
+                        $"Package Manager confirmed all {parallel.Targets.Count} target installs; inventories refreshed.")
+                    : OperatorMutationObservation.Pending(
+                        "At least one target did not confirm installation.",
+                        "Waiting for every selected headset to confirm installation."),
+            OperatorCommandKind.PushFile => OperatorMutationObservation.Confirmed(
+                "Remote file size matches the local source."),
+            OperatorCommandKind.InstallApk or OperatorCommandKind.InstallApkBundle =>
+                OperatorMutationObservation.Confirmed(
+                    "Android Package Manager completed the install and the installed-package inventory was read back."),
+            OperatorCommandKind.EnableWifiAdb => OperatorMutationObservation.Confirmed(
+                $"Ready Wi-Fi ADB endpoint: {result.WifiAdbEnableResult?.Endpoint}"),
+            OperatorCommandKind.DisconnectWifiAdb => OperatorMutationObservation.Confirmed(
+                "The endpoint is absent from the refreshed ADB device inventory."),
+            _ => OperatorMutationObservation.Confirmed("The effective headset state was read back.")
+        };
+    }
+
+    private static OperatorMutationObservation ObserveKioskInstall(OperatorExecutionResult result)
+    {
+        var install = result.RustyKioskInstallResult ??
+            throw new InvalidOperationException("Rusty Kiosk installation returned no verification result.");
+        return install.HelperReady && install.SameSignerControlGranted
+            ? OperatorMutationObservation.Confirmed("Both APKs and their same-signer setup authority are ready.")
+            : OperatorMutationObservation.Pending(
+                "Kiosk installation is incomplete.",
+                "Waiting for both APKs and the same-signer authority to read back as ready.");
+    }
+
+    private static OperatorMutationObservation ObserveKioskProvision(OperatorExecutionResult result)
+    {
+        var provision = result.RustyKioskProvisionResult ??
+            throw new InvalidOperationException("Rusty Kiosk provisioning returned no verification result.");
+        return provision.HelperReady && provision.SameSignerControlGranted
+            ? OperatorMutationObservation.Confirmed("The helper and same-signer control permission are ready.")
+            : OperatorMutationObservation.Pending(
+                "Kiosk provisioning is incomplete.",
+                "Waiting for helper authority readback.");
+    }
+
+    private static OperatorMutationObservation ObserveKioskTagHotload(OperatorExecutionResult result)
+    {
+        var kiosk = result.RustyKioskOperatorResult;
+        return kiosk is { Accepted: true, Completed: true }
+            ? OperatorMutationObservation.Confirmed(
+                $"Rusty Kiosk reloaded {kiosk.State.InstalledCount + kiosk.State.NotInstalledCount} tag-list entries.")
+            : OperatorMutationObservation.Pending(
+                "The file was transferred but Rusty Kiosk has not confirmed reload.",
+                "Waiting for Rusty Kiosk hotload readback.");
+    }
+
+    private static OperatorMutationObservation ObserveKeepAwake(
+        OperatorCommand command,
+        OperatorExecutionResult result)
+    {
+        var status = result.QuestControlStatus ??
+            throw new InvalidOperationException("Keep-awake returned no effective-state readback.");
+        var requested = command.Enabled == true;
+        return status.KeepAwakeActive == requested
+            ? OperatorMutationObservation.Confirmed(
+                $"Keep-awake readback is {(status.KeepAwakeActive ? "active" : "inactive")}.")
+            : OperatorMutationObservation.Pending(
+                $"Keep-awake currently reads {(status.KeepAwakeActive ? "active" : "inactive")}.",
+                "The requested power policy has not appeared in effective-state readback.");
+    }
+
+    private static OperatorMutationObservation ObservePerformance(
+        OperatorCommand command,
+        OperatorExecutionResult result)
+    {
+        var status = result.QuestControlStatus ??
+            throw new InvalidOperationException("Performance change returned no effective-state readback.");
+        var matches = command.ClearPerformance
+            ? string.IsNullOrWhiteSpace(status.CpuLevel) && string.IsNullOrWhiteSpace(status.GpuLevel)
+            : (command.CpuLevel is null || status.CpuLevel == command.CpuLevel.Value.ToString()) &&
+              (command.GpuLevel is null || status.GpuLevel == command.GpuLevel.Value.ToString());
+        return matches
+            ? OperatorMutationObservation.Confirmed(
+                $"CPU/GPU readback is {DisplayOverride(status.CpuLevel)}/{DisplayOverride(status.GpuLevel)}.")
+            : OperatorMutationObservation.Pending(
+                $"CPU/GPU currently reads {DisplayOverride(status.CpuLevel)}/{DisplayOverride(status.GpuLevel)}.",
+                "The requested CPU/GPU override has not appeared in effective-state readback.");
+    }
+
+    private static OperatorMutationObservation ObserveKioskCommand(
+        OperatorCommand command,
+        OperatorExecutionResult result)
+    {
+        var kiosk = result.RustyKioskOperatorResult ??
+            throw new InvalidOperationException("Rusty Kiosk returned no structured state.");
+        if (!kiosk.Accepted || !kiosk.Completed)
+        {
+            return OperatorMutationObservation.Pending(kiosk.Message, "Rusty Kiosk has not completed the request.");
+        }
+
+        var value = command.RustyKioskValue;
+        var state = kiosk.State;
+        var confirmed = RustyKioskReadback.Confirms(command.RustyKioskCommand!.Value, value, kiosk);
+        var observed = KioskObservedState(state);
+        return confirmed
+            ? OperatorMutationObservation.Confirmed(observed)
+            : OperatorMutationObservation.Pending(
+                observed,
+                command.RustyKioskCommand == RustyKioskCommand.RequestWifiAdb
+                    ? "Meta's wearer approval is still pending; refresh after accepting or declining the prompt."
+                    : "The requested Rusty Kiosk state has not appeared in headset readback.");
+    }
+
+    private static string KioskDesiredState(OperatorCommand command) =>
+        $"Rusty Kiosk {command.RustyKioskCommand?.ToWireName()}" +
+        (string.IsNullOrWhiteSpace(command.RustyKioskValue) ? string.Empty : $" = {command.RustyKioskValue}");
+
+    private static string KioskObservedState(RustyKioskState state) =>
+        $"Wi-Fi ADB={(state.WifiAdbEnabled ? "on" : "off")}; " +
+        $"Accessibility={(state.AccessibilityEnabled ? "on" : "off")}; " +
+        $"guard={(state.GuardArmed ? "armed" : "inactive")}; " +
+        $"selected={state.SelectedKey ?? "none"}.";
+
+    private static string DisplayOverride(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "app" : value;
+}
+
+public static class RustyKioskReadback
+{
+    public static bool Confirms(
+        RustyKioskCommand command,
+        string? value,
+        RustyKioskOperatorResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (!result.Accepted || !result.Completed)
+        {
+            return false;
+        }
+
+        var state = result.State;
+        return command switch
+        {
+            RustyKioskCommand.RequestWifiAdb => state.WifiAdbEnabled,
+            RustyKioskCommand.EnableWifiAfterBoot => state.RequestWifiAdbAfterBoot,
+            RustyKioskCommand.DisableWifiAfterBoot => !state.RequestWifiAdbAfterBoot,
+            RustyKioskCommand.DisableWifiAdb => !state.WifiAdbEnabled,
+            RustyKioskCommand.EnableAccessibility => state.AccessibilityEnabled,
+            RustyKioskCommand.DisableAccessibility => !state.AccessibilityEnabled,
+            RustyKioskCommand.LaunchKiosk => state.GuardArmed,
+            RustyKioskCommand.LaunchNormal => !state.GuardArmed,
+            RustyKioskCommand.SetSearch => string.Equals(state.Search, value ?? string.Empty, StringComparison.Ordinal),
+            RustyKioskCommand.FilterTag => string.Equals(state.TagFilter ?? string.Empty, value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            RustyKioskCommand.Select => string.Equals(state.SelectedKey, value, StringComparison.Ordinal),
+            RustyKioskCommand.AddTag => state.Entries.Any(entry =>
+                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
+                entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
+            RustyKioskCommand.RemoveTag => state.Entries.Any(entry =>
+                string.Equals(entry.Key, state.SelectedKey, StringComparison.Ordinal) &&
+                !entry.Tags.Contains(value ?? string.Empty, StringComparer.OrdinalIgnoreCase)),
+            RustyKioskCommand.Reload or RustyKioskCommand.ExitMetaHome => true,
+            _ => true
+        };
+    }
+}

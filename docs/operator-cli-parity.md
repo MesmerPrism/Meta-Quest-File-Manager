@@ -1,8 +1,9 @@
 # GUI And CLI Operator Parity
 
-Every device operation in the WPF app is represented by one immutable
-`OperatorCommand` in the core library. The WPF button and CLI both construct
-that command through the same factory and send it through the same executor.
+Every ADB device operation in the WPF app is represented by one immutable
+`OperatorCommand` in the core library. Direct Rusty Kiosk operations use the
+typed `RustyKioskDirectClient` instead. In both cases the WPF button and CLI use
+the same core method and readback model.
 The CLI is intended for agents and automation, so command text is deliberately
 not projected into the non-technical WPF interface.
 
@@ -34,6 +35,19 @@ exact tool selection is part of the test.
 | Disconnect selected Wi-Fi headset | `wifi disconnect` |
 | Install one APK on checked Wi-Fi headsets | `apk install-many` |
 | Install one APK bundle on checked Wi-Fi headsets | `apk install-bundle-many` |
+| Refresh optional Kiosk status/catalog | `kiosk status` |
+| Install bundled Kiosk pair | `kiosk install --confirm-kiosk-setup` |
+| Provision installed Kiosk helper | `kiosk provision --confirm-kiosk-setup` |
+| Kiosk select/tag/launch/setup action | `kiosk command` |
+| Export/import Kiosk tag file | `kiosk tags export` / `kiosk tags import` |
+| Connect/refresh Kiosk directly | `kiosk-direct status` |
+| Direct Kiosk typed action | `kiosk-direct command` |
+| Direct tag export/import | `kiosk-direct tags export` / `kiosk-direct tags import` |
+| Direct staging list/upload/download/delete | `kiosk-direct files ...` |
+| Direct attended APK install/receipt | `kiosk-direct install` / `kiosk-direct install-status` |
+| Refresh batteries/power/performance | `device status` |
+| Keep awake / restore normal | `device keep-awake` |
+| Set / clear CPU and GPU overrides | `device performance` |
 
 Example shapes use placeholders rather than live device or local identities:
 
@@ -50,6 +64,16 @@ Example shapes use placeholders rather than live device or local identities:
 & '.\meta-quest-file-manager.exe' wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk status --serial <quest-serial> --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk install --serial <usb-serial> --confirm-kiosk-setup --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk command --serial <quest-serial> --command launch-kiosk --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <code> --json
+& '.\meta-quest-file-manager.exe' kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
+& '.\meta-quest-file-manager.exe' kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <local-file> --json
+& '.\meta-quest-file-manager.exe' kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <base-apk> --confirm-local-install --json
+& '.\meta-quest-file-manager.exe' device keep-awake --serial <quest-serial> --on --confirm-device-settings --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json --adb <path-to-adb>
 ```
 
 PowerShell rendering single-quotes paths when required and doubles embedded
@@ -67,6 +91,12 @@ not a separate operation. CLI arguments therefore remain identical. Machine-
 readable CLI output stays one final JSON document; agents use its per-target
 results rather than scraping GUI animation or mixed progress lines.
 
+State-changing JSON results wrap the operation payload with a
+`mutation` receipt. Its ordered transitions are `sent`, `pending`, and only
+then `confirmed` when route-specific headset readback matches. A prompt-gated
+request may finish with `pending`; this is a successful request admission, not
+a claim that the wearer accepted it. The WPF status line uses the same receipt.
+
 ## Acceptance
 
 `OperatorCommandTests` must cover the exact CLI argument vector for every WPF
@@ -81,3 +111,8 @@ Wi-Fi and parallel acceptance additionally proves address inspection occurs
 before `tcpip`, no daemon lifecycle command is emitted, each install remains
 serial-scoped, concurrency is bounded, duplicate targets are rejected, and
 partial failures remain visible.
+
+Direct-link acceptance uses shared Kotlin/C# HMAC vectors, rejects response-ID,
+digest, and signature mismatches, and keeps Android install receipts pending
+until the matching session reports installed or failed. It does not initialize
+ADB and has no fleet or fan-out route.

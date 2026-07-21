@@ -16,6 +16,7 @@ param(
     [string]$PackageTimestampUrl = 'http://timestamp.digicert.com',
     [string]$SetupTimestampUrl = 'http://timestamp.digicert.com',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
+    [string]$KioskBundleDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\kiosk-bundle'),
     [switch]$SkipBuildAndTest
 )
 
@@ -28,6 +29,34 @@ if (-not $OutputDirectory.StartsWith($artifactsRoot + [IO.Path]::DirectorySepara
 }
 if (-not $SetupCertificatePath) { $SetupCertificatePath = $PackageCertificatePath }
 if (-not $SetupCertificatePassword) { $SetupCertificatePassword = $PackageCertificatePassword }
+
+$KioskBundleDirectory = [IO.Path]::GetFullPath($KioskBundleDirectory)
+$requiredKioskFiles = @(
+    'rusty-kiosk.apk',
+    'rusty-kiosk-setup-helper.apk',
+    'bundle-manifest.json',
+    'RUSTY-KIOSK-LICENSE.txt',
+    'RUSTY-KIOSK-SOURCE.txt'
+)
+foreach ($name in $requiredKioskFiles) {
+    $path = Join-Path $KioskBundleDirectory $name
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "The public Windows release requires the complete Rusty Kiosk bundle; missing $path"
+    }
+}
+$kioskManifest = Get-Content -Raw -LiteralPath (Join-Path $KioskBundleDirectory 'bundle-manifest.json') | ConvertFrom-Json
+if ($kioskManifest.schema -ne 'meta.quest.file_manager.rusty_kiosk_bundle.v1' -or $kioskManifest.build_type -ne 'release') {
+    throw 'The public Windows release requires a release-signed Rusty Kiosk bundle manifest.'
+}
+$defaultKioskBundle = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\kiosk-bundle'))
+if (-not $KioskBundleDirectory.Equals($defaultKioskBundle, [StringComparison]::OrdinalIgnoreCase)) {
+    if (Test-Path -LiteralPath $defaultKioskBundle) {
+        Remove-Item -LiteralPath $defaultKioskBundle -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $defaultKioskBundle -Force | Out-Null
+    Copy-Item -Path (Join-Path $KioskBundleDirectory '*') -Destination $defaultKioskBundle -Recurse -Force
+    $KioskBundleDirectory = $defaultKioskBundle
+}
 
 if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
