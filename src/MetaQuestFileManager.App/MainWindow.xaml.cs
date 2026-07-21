@@ -15,6 +15,11 @@ public partial class MainWindow : Window
     private readonly AdbClient? _client;
     private readonly OperatorCommandExecutor? _operator;
     private readonly ObservableCollection<WifiInstallTargetChoice> _wifiInstallTargets = [];
+    private RustyKioskBundle? _rustyKioskBundle;
+    private RustyKioskInstallationStatus? _rustyKioskInstallation;
+    private RustyKioskState? _rustyKioskState;
+    private OperatorCommand? _pendingMutationCommand;
+    private OperatorMutationReceipt? _lastMutationReceipt;
     private IProgress<OperatorProgress>? _activeProgress;
     private int _progressGeneration;
     private bool _busy;
@@ -23,6 +28,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         WifiInstallTargetsList.ItemsSource = _wifiInstallTargets;
+        CpuLevelBox.ItemsSource = Enumerable.Range(0, 6);
+        GpuLevelBox.ItemsSource = Enumerable.Range(0, 6);
+        CpuLevelBox.SelectedItem = 3;
+        GpuLevelBox.SelectedItem = 3;
+        KioskTagFilterBox.ItemsSource = new[] { "All tags" };
+        KioskTagFilterBox.SelectedIndex = 0;
+        SetRustyKioskBundle(RustyKioskBundleLocator.TryFind());
 
         var adbPath = AdbLocator.Find();
         if (adbPath is null)
@@ -54,6 +66,7 @@ public partial class MainWindow : Window
     {
         RemoteEntriesGrid.ItemsSource = null;
         PackagesList.ItemsSource = null;
+        ClearKioskProjection();
         if (DeviceBox.SelectedItem is QuestDevice device)
         {
             if (AndroidInput.TryParseWifiEndpoint(device.Serial, out var host, out var port))
@@ -556,6 +569,627 @@ public partial class MainWindow : Window
             $"Exporting {packageName}…");
     }
 
+    private void OnBrowseKioskBundle(object sender, RoutedEventArgs eventArgs)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose the Rusty Kiosk bundle folder",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            SetRustyKioskBundle(RustyKioskBundle.FromDirectory(dialog.FolderName));
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException)
+        {
+            ShowInputMessage(exception.Message);
+        }
+    }
+
+    private async void OnInstallKiosk(object sender, RoutedEventArgs eventArgs)
+    {
+        if (_rustyKioskBundle is null)
+        {
+            ShowInputMessage("Choose a bundle containing both Rusty Kiosk APKs first.");
+            return;
+        }
+
+        QuestDevice device;
+        try
+        {
+            device = RequireReadyUsbDevice();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowInputMessage(exception.Message);
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "Install the Rusty Kiosk app and same-signer setup helper, then grant the helper its one-time USB setup authority?\n\n" +
+                "This does not enable Wi-Fi ADB or Accessibility. Those remain separate, visible choices.",
+                "Confirm Rusty Kiosk setup",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await ExecuteOperatorAsync(
+                    OperatorCommands.InstallRustyKiosk(device.Serial, _rustyKioskBundle, operatorConfirmed: true));
+                var install = execution.RustyKioskInstallResult ??
+                    throw new InvalidOperationException("Rusty Kiosk installation returned no verification result.");
+                KioskInstallStatusText.Text = "Rusty Kiosk: installed";
+                KioskSetupStatusText.Text = install.HelperReady && install.SameSignerControlGranted
+                    ? "USB setup: confirmed ready"
+                    : "USB setup: pending readback";
+                await RefreshKioskAsync();
+            },
+            "Installing Rusty Kiosk…");
+    }
+
+    private async void OnProvisionKiosk(object sender, RoutedEventArgs eventArgs)
+    {
+        QuestDevice device;
+        try
+        {
+            device = RequireReadyUsbDevice();
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowInputMessage(exception.Message);
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "Grant the installed Rusty Kiosk Setup helper its one-time USB authority?\n\n" +
+                "No Wi-Fi ADB or Accessibility setting will be enabled automatically.",
+                "Confirm Kiosk provisioning",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                await ExecuteOperatorAsync(
+                    OperatorCommands.ProvisionRustyKiosk(device.Serial, operatorConfirmed: true));
+                await RefreshKioskAsync();
+            },
+            "Provisioning Rusty Kiosk Setup…");
+    }
+
+    private async void OnRefreshKiosk(object sender, RoutedEventArgs eventArgs) =>
+        await RunBusyAsync(RefreshKioskAsync, "Refreshing Rusty Kiosk status…");
+
+    private void OnKioskFilterChanged(object sender, EventArgs eventArgs) =>
+        UpdateKioskAppProjection();
+
+    private void OnKioskAppSelectionChanged(object sender, SelectionChangedEventArgs eventArgs)
+    {
+        var tags = (KioskAppsList.SelectedItem as RustyKioskAppEntry)?.Tags ?? [];
+        KioskSelectedTagsBox.ItemsSource = tags;
+        KioskSelectedTagsBox.SelectedIndex = tags.Count > 0 ? 0 : -1;
+    }
+
+    private async void OnKioskLaunchNormal(object sender, RoutedEventArgs eventArgs) =>
+        await LaunchSelectedKioskAppAsync(guarded: false);
+
+    private async void OnKioskLaunchGuarded(object sender, RoutedEventArgs eventArgs) =>
+        await LaunchSelectedKioskAppAsync(guarded: true);
+
+    private async void OnAddKioskTag(object sender, RoutedEventArgs eventArgs)
+    {
+        var tag = KioskTagEditorBox.Text.Trim();
+        if (tag.Length == 0)
+        {
+            ShowInputMessage("Enter a tag first.");
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                await SelectCurrentKioskEntryAsync();
+                await RunKioskCommandAsync(RustyKioskCommand.AddTag, tag);
+                KioskTagEditorBox.Clear();
+            },
+            $"Adding tag {tag}…");
+    }
+
+    private async void OnRemoveKioskTag(object sender, RoutedEventArgs eventArgs)
+    {
+        if (KioskSelectedTagsBox.SelectedItem is not string tag)
+        {
+            ShowInputMessage("Select one of the app's tags first.");
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                await SelectCurrentKioskEntryAsync();
+                await RunKioskCommandAsync(RustyKioskCommand.RemoveTag, tag);
+            },
+            $"Removing tag {tag}…");
+    }
+
+    private async void OnExportKioskTags(object sender, RoutedEventArgs eventArgs)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Rusty Kiosk tag file",
+            Filter = "JSON files (*.json)|*.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+            FileName = "app-tags.v1.json",
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                await ExecuteOperatorAsync(OperatorCommands.PullRustyKioskTags(device.Serial, dialog.FileName));
+                StatusText.Text = $"Exported the Rusty Kiosk tag file to {dialog.FileName}.";
+            },
+            "Exporting Rusty Kiosk tags…");
+    }
+
+    private async void OnImportKioskTags(object sender, RoutedEventArgs eventArgs)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import a Rusty Kiosk tag file",
+            Filter = "JSON files (*.json)|*.json",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            RustyKioskTagFile.ValidateAndRead(dialog.FileName);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or System.Text.Json.JsonException)
+        {
+            ShowInputMessage(exception.Message);
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "Replace the active Rusty Kiosk tag file with this validated file and hotload it now?",
+                "Confirm tag hotload",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await ExecuteOperatorAsync(
+                    OperatorCommands.PushRustyKioskTags(
+                        device.Serial,
+                        dialog.FileName,
+                        operatorConfirmed: true));
+                ApplyKioskExecution(execution);
+            },
+            "Importing and hotloading Rusty Kiosk tags…");
+    }
+
+    private async void OnKioskRequestWifiAdb(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.RequestWifiAdb,
+            "Ask Meta to show its Wi-Fi ADB permission prompt in the headset?\n\nThe PC will show this as pending until the headset reports the permission as enabled.");
+
+    private async void OnKioskDisableWifiAdb(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.DisableWifiAdb,
+            "Disable Wi-Fi ADB on the headset? A current wireless ADB connection may close immediately.");
+
+    private async void OnKioskEnableAutoWifi(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.EnableWifiAfterBoot,
+            "Ask for Meta's Wi-Fi ADB permission after each restart until you turn this preference off?");
+
+    private async void OnKioskDisableAutoWifi(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.DisableWifiAfterBoot,
+            "Stop requesting Wi-Fi ADB permission after restart?");
+
+    private async void OnKioskEnableAccessibility(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.EnableAccessibility,
+            "Enable Rusty Kiosk's Accessibility watchdog? Guard behavior remains inactive until an app is launched in Kiosk mode.");
+
+    private async void OnKioskDisableAccessibility(object sender, RoutedEventArgs eventArgs) =>
+        await ConfirmAndRunKioskControlAsync(
+            RustyKioskCommand.DisableAccessibility,
+            "Disable Rusty Kiosk's Accessibility watchdog?");
+
+    private async void OnEnableKeepAwake(object sender, RoutedEventArgs eventArgs) =>
+        await SetKeepAwakeAsync(enabled: true);
+
+    private async void OnDisableKeepAwake(object sender, RoutedEventArgs eventArgs) =>
+        await SetKeepAwakeAsync(enabled: false);
+
+    private async void OnApplyPerformance(object sender, RoutedEventArgs eventArgs)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        if (CpuLevelBox.SelectedItem is not int cpu || GpuLevelBox.SelectedItem is not int gpu)
+        {
+            ShowInputMessage("Choose both a CPU and GPU level from 0 through 5.");
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                $"Set fixed Quest CPU/GPU levels to {cpu}/{gpu}?\n\nThese overrides remain until cleared or the headset restarts.",
+                "Confirm performance override",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await ExecuteOperatorAsync(
+                    OperatorCommands.SetQuestPerformance(
+                        device.Serial,
+                        cpu,
+                        gpu,
+                        clear: false,
+                        operatorConfirmed: true));
+                ApplyQuestControlStatus(execution.QuestControlStatus);
+            },
+            "Applying fixed CPU/GPU levels…");
+    }
+
+    private async void OnClearPerformance(object sender, RoutedEventArgs eventArgs)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                "Clear the fixed CPU/GPU overrides and restore application-controlled levels?",
+                "Confirm performance restore",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await ExecuteOperatorAsync(
+                    OperatorCommands.SetQuestPerformance(
+                        device.Serial,
+                        cpuLevel: null,
+                        gpuLevel: null,
+                        clear: true,
+                        operatorConfirmed: true));
+                ApplyQuestControlStatus(execution.QuestControlStatus);
+            },
+            "Restoring app-controlled CPU/GPU levels…");
+    }
+
+    private async void OnRefreshQuestControls(object sender, RoutedEventArgs eventArgs) =>
+        await RunBusyAsync(RefreshQuestControlsAsync, "Refreshing power and performance status…");
+
+    private async Task RefreshKioskAsync()
+    {
+        var command = OperatorCommands.InspectRustyKiosk(RequireReadyDevice().Serial);
+        var execution = await ExecuteOperatorAsync(command);
+        ApplyKioskExecution(execution);
+        ReconcilePendingMutation(execution);
+    }
+
+    private async Task RefreshQuestControlsAsync()
+    {
+        var execution = await ExecuteOperatorAsync(
+            OperatorCommands.ReadQuestControls(RequireReadyDevice().Serial));
+        ApplyQuestControlStatus(execution.QuestControlStatus);
+        ReconcilePendingMutation(execution);
+    }
+
+    private async Task LaunchSelectedKioskAppAsync(bool guarded)
+    {
+        if (KioskAppsList.SelectedItem is not RustyKioskAppEntry entry)
+        {
+            ShowInputMessage("Select an app first.");
+            return;
+        }
+
+        if (!entry.Installed || !entry.Launchable)
+        {
+            ShowInputMessage($"{entry.Name} cannot be launched because it is {entry.StatusLabel.ToLowerInvariant()}.");
+            return;
+        }
+
+        var mode = guarded ? "Kiosk" : "normal";
+        if (MessageBox.Show(
+                this,
+                $"Launch {entry.Name} in {mode} mode?",
+                $"Confirm {mode} launch",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                await SelectCurrentKioskEntryAsync();
+                await RunKioskCommandAsync(
+                    guarded ? RustyKioskCommand.LaunchKiosk : RustyKioskCommand.LaunchNormal);
+            },
+            $"Launching {entry.Name}…");
+    }
+
+    private async Task SelectCurrentKioskEntryAsync()
+    {
+        if (KioskAppsList.SelectedItem is not RustyKioskAppEntry entry)
+        {
+            throw new InvalidOperationException("Select an app first.");
+        }
+
+        await RunKioskCommandAsync(RustyKioskCommand.Select, entry.Key);
+    }
+
+    private async Task ConfirmAndRunKioskControlAsync(RustyKioskCommand command, string prompt)
+    {
+        if (!TryGetReadyDevice(out _))
+        {
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                prompt,
+                "Confirm Rusty Kiosk control",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () => await RunKioskCommandAsync(command),
+            $"Requesting {command.ToWireName()}…");
+    }
+
+    private async Task RunKioskCommandAsync(RustyKioskCommand command, string? value = null)
+    {
+        var execution = await ExecuteOperatorAsync(
+            OperatorCommands.InvokeRustyKiosk(
+                RequireReadyDevice().Serial,
+                command,
+                value,
+                operatorConfirmed: true));
+        ApplyKioskExecution(execution);
+    }
+
+    private async Task SetKeepAwakeAsync(bool enabled)
+    {
+        if (!TryGetReadyDevice(out var device))
+        {
+            return;
+        }
+
+        if (!int.TryParse(KeepAwakeDurationBox.Text, out var duration) || duration is < 60_000 or > 86_400_000)
+        {
+            ShowInputMessage("Keep-awake duration must be a whole number from 60000 through 86400000 milliseconds.");
+            return;
+        }
+
+        var choice = enabled ? "keep the headset awake" : "restore normal power and proximity behavior";
+        if (MessageBox.Show(
+                this,
+                $"Request the headset to {choice}?",
+                "Confirm power policy change",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await RunBusyAsync(
+            async () =>
+            {
+                var execution = await ExecuteOperatorAsync(
+                    OperatorCommands.SetQuestKeepAwake(
+                        device.Serial,
+                        enabled,
+                        duration,
+                        operatorConfirmed: true));
+                ApplyQuestControlStatus(execution.QuestControlStatus);
+            },
+            enabled ? "Enabling keep-awake…" : "Restoring normal power behavior…");
+    }
+
+    private void SetRustyKioskBundle(RustyKioskBundle? bundle)
+    {
+        _rustyKioskBundle = bundle;
+        KioskBundlePathBox.Text = bundle?.Source ?? string.Empty;
+        KioskBundleStatusText.Text = bundle is null
+            ? "Kiosk bundle not located. Normal file-manager features are still fully available."
+            : $"Bundle ready: {Path.GetFileName(bundle.MainApkPath)} + {Path.GetFileName(bundle.SetupHelperApkPath)}";
+    }
+
+    private void ClearKioskProjection()
+    {
+        _rustyKioskInstallation = null;
+        _rustyKioskState = null;
+        KioskAppsList.ItemsSource = null;
+        KioskSelectedTagsBox.ItemsSource = null;
+        KioskTagFilterBox.ItemsSource = new[] { "All tags" };
+        KioskTagFilterBox.SelectedIndex = 0;
+        KioskInstallStatusText.Text = "Rusty Kiosk: not checked";
+        KioskSetupStatusText.Text = "USB setup: not checked";
+        KioskWifiStatusText.Text = "Wireless debugging: not checked";
+        KioskAutoWifiStatusText.Text = "Request after restart: not checked";
+        KioskAccessibilityStatusText.Text = "Accessibility guard: not checked";
+        HeadsetBatteryText.Text = "Headset battery: not checked";
+        ControllerBatteryText.Text = "Controllers: not checked";
+        KeepAwakeStatusText.Text = "Keep awake: not checked";
+        PerformanceStatusText.Text = "CPU/GPU: not checked";
+    }
+
+    private void ApplyKioskExecution(OperatorExecutionResult execution)
+    {
+        if (execution.RustyKioskInstallationStatus is { } installation)
+        {
+            _rustyKioskInstallation = installation;
+            KioskInstallStatusText.Text = installation.MainInstalled
+                ? $"Rusty Kiosk: {installation.MainVersion ?? "installed"}"
+                : "Rusty Kiosk: not installed (file manager remains available)";
+            KioskSetupStatusText.Text = installation.SetupHelperReady && installation.SameSignerControlGranted
+                ? $"USB setup: confirmed ready ({installation.SetupHelperVersion ?? "helper installed"})"
+                : installation.SetupHelperInstalled
+                    ? "USB setup: helper installed, provisioning required"
+                    : "USB setup: helper not installed";
+        }
+
+        if (execution.RustyKioskOperatorResult is not { } kiosk)
+        {
+            _rustyKioskState = null;
+            KioskAppsList.ItemsSource = null;
+            return;
+        }
+
+        _rustyKioskState = kiosk.State;
+        KioskWifiStatusText.Text = $"Wireless debugging: {(kiosk.State.WifiAdbEnabled ? "enabled" : "disabled")}";
+        KioskAutoWifiStatusText.Text = $"Request after restart: {(kiosk.State.RequestWifiAdbAfterBoot ? "enabled" : "disabled")}";
+        KioskAccessibilityStatusText.Text =
+            $"Accessibility guard: {(kiosk.State.AccessibilityEnabled ? "enabled" : "disabled")}; " +
+            $"guard {(kiosk.State.GuardArmed ? "armed" : "inactive")}";
+        var previousTag = KioskTagFilterBox.SelectedItem as string;
+        var tagChoices = new[] { "All tags" }.Concat(kiosk.State.Tags).ToArray();
+        KioskTagFilterBox.ItemsSource = tagChoices;
+        KioskTagFilterBox.SelectedItem = tagChoices.Contains(previousTag, StringComparer.OrdinalIgnoreCase)
+            ? tagChoices.First(tag => string.Equals(tag, previousTag, StringComparison.OrdinalIgnoreCase))
+            : "All tags";
+        UpdateKioskAppProjection();
+        StatusText.Text = kiosk.Message;
+    }
+
+    private void UpdateKioskAppProjection()
+    {
+        if (_rustyKioskState is null)
+        {
+            return;
+        }
+
+        var selectedKey = (KioskAppsList.SelectedItem as RustyKioskAppEntry)?.Key;
+        var search = KioskSearchBox.Text.Trim();
+        var tag = KioskTagFilterBox.SelectedItem as string;
+        var entries = _rustyKioskState.Entries
+            .Where(entry => search.Length == 0 ||
+                            entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                            (entry.PackageName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            entry.Tags.Any(candidate => candidate.Contains(search, StringComparison.OrdinalIgnoreCase)))
+            .Where(entry => string.IsNullOrWhiteSpace(tag) ||
+                            string.Equals(tag, "All tags", StringComparison.Ordinal) ||
+                            entry.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(static entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        KioskAppsList.ItemsSource = entries;
+        KioskAppsList.SelectedItem = entries.FirstOrDefault(entry =>
+            string.Equals(entry.Key, selectedKey, StringComparison.Ordinal));
+    }
+
+    private void ApplyQuestControlStatus(QuestControlStatus? status)
+    {
+        if (status is null)
+        {
+            return;
+        }
+
+        HeadsetBatteryText.Text = $"Headset battery: {status.HeadsetBatteryLabel}";
+        ControllerBatteryText.Text = $"Controllers: {status.ControllerBatteryLabel}";
+        KeepAwakeStatusText.Text =
+            $"Keep awake: {(status.KeepAwakeActive ? "active" : "not active")}; " +
+            $"display {status.DisplayState}; proximity {status.ProximityState}";
+        PerformanceStatusText.Text =
+            $"CPU/GPU: {DisplayPerformanceLevel(status.CpuLevel)} / {DisplayPerformanceLevel(status.GpuLevel)}";
+    }
+
+    private void ReconcilePendingMutation(OperatorExecutionResult latestReadback)
+    {
+        if (_lastMutationReceipt is not { IsTerminal: false } receipt || _pendingMutationCommand is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _lastMutationReceipt = OperatorMutationReconciler.Reconcile(
+                receipt,
+                _pendingMutationCommand,
+                latestReadback);
+            ShowMutationReceipt(_lastMutationReceipt);
+            if (_lastMutationReceipt.IsTerminal)
+            {
+                _pendingMutationCommand = null;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // This refresh did not contain the evidence type needed by the pending operation.
+        }
+    }
+
+    private void ShowMutationReceipt(OperatorMutationReceipt receipt)
+    {
+        KioskSyncStatusText.Text =
+            $"PC/headset sync: {receipt.Stage.ToString().ToLowerInvariant()} — {receipt.ObservedState}";
+        AutomationProperties.SetName(KioskSyncStatusText, KioskSyncStatusText.Text);
+    }
+
+    private static string DisplayPerformanceLevel(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "app controlled" : value;
+
     private async Task RefreshDevicesAsync(string? preferredSerial = null)
     {
         var previousPrimarySerial = preferredSerial ?? (DeviceBox.SelectedItem as QuestDevice)?.Serial;
@@ -655,8 +1289,18 @@ public partial class MainWindow : Window
         _operator ?? throw new InvalidOperationException(
             "ADB was not found. Install Android Platform Tools or configure META_QUEST_FILE_MANAGER_ADB.");
 
-    private Task<OperatorExecutionResult> ExecuteOperatorAsync(OperatorCommand command) =>
-        RequireOperator().ExecuteAsync(command, progress: _activeProgress);
+    private async Task<OperatorExecutionResult> ExecuteOperatorAsync(OperatorCommand command)
+    {
+        var execution = await RequireOperator().ExecuteAsync(command, progress: _activeProgress);
+        if (execution.MutationReceipt is { } receipt)
+        {
+            _lastMutationReceipt = receipt;
+            _pendingMutationCommand = receipt.IsTerminal ? null : command;
+            ShowMutationReceipt(receipt);
+        }
+
+        return execution;
+    }
 
     private ApkInstallOptions ReadInstallOptions() =>
         new(
@@ -777,6 +1421,11 @@ public partial class MainWindow : Window
     private void UpdateOperationProgress(OperatorProgress progress)
     {
         StatusText.Text = progress.Message;
+        if (progress.Stage.StartsWith("mutation-", StringComparison.Ordinal))
+        {
+            KioskSyncStatusText.Text = $"PC/headset sync: {progress.Message}";
+        }
+
         AutomationProperties.SetName(OperationProgressBar, progress.Message);
         if (progress.IsIndeterminate)
         {

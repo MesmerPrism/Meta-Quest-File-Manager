@@ -31,6 +31,16 @@ action can be automated and tested.
   Wi-Fi ADB headsets with bounded parallelism and per-headset results;
 - show honest operation progress: indeterminate when ADB provides no total,
   phase-based for Wi-Fi setup, and target-based for parallel installs;
+- optionally install and provision the separately licensed Rusty Kiosk app and
+  same-signer setup helper, without making file-manager features depend on them;
+- search Kiosk apps, filter/edit tags, preserve named entries for apps not
+  installed on this headset, hotload tag files, and launch normally or guarded;
+- request/disable Wi-Fi ADB, manage its after-restart prompt preference, and
+  enable/disable Kiosk Accessibility through fixed typed routes;
+- show headset/controller batteries, keep awake or restore normal power, and
+  set or clear fixed Quest CPU/GPU levels;
+- track every PC mutation as sent, pending, then headset-confirmed (or failed/
+  timed out) instead of treating process success as effective state;
 - expose the same typed routes through a Windows WPF app and CLI;
 - keep the automation-oriented CLI out of the non-technical WPF interface;
 - publish a signed MSIX, App Installer update feed, guided setup helper, and
@@ -90,6 +100,13 @@ dotnet run --project src/MetaQuestFileManager.Cli -- wifi enable --serial <usb-s
 dotnet run --project src/MetaQuestFileManager.Cli -- wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
 dotnet run --project src/MetaQuestFileManager.Cli -- apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file ./example.apk --parallelism 2 --json
 dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder ./example-apk-set --parallelism 2 --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk status --serial <quest-serial> --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk install --serial <usb-serial> --confirm-kiosk-setup --json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags export --serial <quest-serial> --output ./app-tags.v1.json
+dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags import --serial <quest-serial> --file ./app-tags.v1.json --confirm-kiosk-control --json
+dotnet run --project src/MetaQuestFileManager.Cli -- device status --serial <quest-serial> --json
+dotnet run --project src/MetaQuestFileManager.Cli -- device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
+dotnet run --project src/MetaQuestFileManager.Cli -- device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
 ```
 
 Pass `--json` to list commands for machine-readable output. Pass `--adb` to
@@ -99,6 +116,9 @@ The Windows release archive places `MetaQuestFileManager.exe` and
 automation, and advanced operator workflows; it is not displayed in the GUI.
 Wi-Fi state changes require an explicit confirmation in the WPF app or the
 `--confirm-wifi-adb` CLI flag. The app never resets the global ADB server.
+Kiosk setup/control and device settings use their own confirmation flags.
+Mutation JSON contains desired and observed state plus its transition history.
+A Meta permission prompt can legitimately remain pending until wearer response.
 
 ## Design And Safety
 
@@ -108,6 +128,7 @@ Wi-Fi state changes require an explicit confirmation in the WPF app or the
 - [Wi-Fi ADB and parallel installation](docs/wifi-adb-and-parallel-install.md)
 - [Two-headset Wi-Fi validation receipt](docs/wifi-adb-parallel-live-validation-2026-07-17.md)
 - [Progress reporting contract](docs/progress-reporting.md)
+- [Rusty Kiosk integration and synchronization](docs/rusty-kiosk-integration.md)
 - [Release workflow](docs/release-workflow.md)
 - [Reference intake](docs/reference-intake.md)
 
@@ -123,3 +144,5 @@ Wi-Fi state changes require an explicit confirmation in the WPF app or the
 
 MIT. See [LICENSE](LICENSE). Android Platform Tools and other optional external
 tools retain their own licenses and are not included in this source tree.
+Official Windows binaries may aggregate the separate Rusty Kiosk APK bundle,
+licensed AGPL-3.0-or-later with its license, source link, and hashes included.

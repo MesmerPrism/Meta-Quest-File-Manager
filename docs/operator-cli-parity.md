@@ -34,6 +34,14 @@ exact tool selection is part of the test.
 | Disconnect selected Wi-Fi headset | `wifi disconnect` |
 | Install one APK on checked Wi-Fi headsets | `apk install-many` |
 | Install one APK bundle on checked Wi-Fi headsets | `apk install-bundle-many` |
+| Refresh optional Kiosk status/catalog | `kiosk status` |
+| Install bundled Kiosk pair | `kiosk install --confirm-kiosk-setup` |
+| Provision installed Kiosk helper | `kiosk provision --confirm-kiosk-setup` |
+| Kiosk select/tag/launch/setup action | `kiosk command` |
+| Export/import Kiosk tag file | `kiosk tags export` / `kiosk tags import` |
+| Refresh batteries/power/performance | `device status` |
+| Keep awake / restore normal | `device keep-awake` |
+| Set / clear CPU and GPU overrides | `device performance` |
 
 Example shapes use placeholders rather than live device or local identities:
 
@@ -50,6 +58,12 @@ Example shapes use placeholders rather than live device or local identities:
 & '.\meta-quest-file-manager.exe' wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json --adb <path-to-adb>
 & '.\meta-quest-file-manager.exe' apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk status --serial <quest-serial> --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk install --serial <usb-serial> --confirm-kiosk-setup --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk command --serial <quest-serial> --command launch-kiosk --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' device keep-awake --serial <quest-serial> --on --confirm-device-settings --json --adb <path-to-adb>
+& '.\meta-quest-file-manager.exe' device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json --adb <path-to-adb>
 ```
 
 PowerShell rendering single-quotes paths when required and doubles embedded
@@ -66,6 +80,12 @@ The WPF footer's progress bar is a transient projection of the same executor,
 not a separate operation. CLI arguments therefore remain identical. Machine-
 readable CLI output stays one final JSON document; agents use its per-target
 results rather than scraping GUI animation or mixed progress lines.
+
+State-changing JSON results wrap the operation payload with a
+`mutation` receipt. Its ordered transitions are `sent`, `pending`, and only
+then `confirmed` when route-specific headset readback matches. A prompt-gated
+request may finish with `pending`; this is a successful request admission, not
+a claim that the wearer accepted it. The WPF status line uses the same receipt.
 
 ## Acceptance
 

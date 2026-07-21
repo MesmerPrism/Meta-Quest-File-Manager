@@ -21,9 +21,13 @@ sanitized implementation requirements.
 - Reference: <https://github.com/MesmerPrism/Rusty-XR-Companion-Apps>
 - Why it matters: existing public WPF/CLI Quest operator tool.
 - Lesson borrowed: one reusable command layer, explicit ADB discovery, GUI/CLI
-  parity, no-hardware diagnostics, and public boundary checks.
-- Overreach rejected: no broker, camera, casting, runtime-profile, LSL, or APK
-  catalog scope in this focused file manager.
+  parity, no-hardware diagnostics, public boundary checks, headset/controller
+  power parsing, reversible keep-awake, and explicit CPU/GPU overrides.
+- Later refinement: every mutation now carries desired-versus-observed state;
+  fixed settings do not become successful merely because their shell process
+  exited successfully.
+- Overreach rejected: no broker, camera, casting, runtime-profile, LSL, generic
+  shell console, or private APK catalog.
 - Validation: shared-core tests and CLI smoke.
 
 ## Viscereality Companion
@@ -46,3 +50,17 @@ sanitized implementation requirements.
 - Overreach rejected: no ADB authorization bypass or claim of unrestricted
   filesystem access.
 - Validation: public boundary scan and later explicit live-device receipt.
+
+## Rusty Kiosk
+
+- Reference: <https://github.com/MesmerPrism/Rusty-Kiosk>
+- Why it matters: owns the Spatial SDK catalog/tag panel, same-signer setup
+  helper, explicit Wi-Fi permission UX, and soft Accessibility watchdog.
+- Lesson borrowed: expose a narrow versioned host adapter over the same typed
+  command queue as wearer/CLI input; keep Meta permission prompts visible and
+  the watchdog inactive inside Kiosk itself.
+- Boundary added: DUMP-protected provider v2, fixed commands, and bounded
+  ordered tag chunks with SHA-256/schema/atomic activation.
+- Overreach rejected: no arbitrary shell, component, intent, filesystem path,
+  silent Meta prompt acceptance, device-owner lock task, or dependency from the
+  normal file-manager tabs onto Kiosk installation.

@@ -9,8 +9,11 @@ Meta Quest File Manager is a Windows-first operator tool for ADB-authorized
 Meta Quest headsets. It owns file-transfer UX, installed-package inspection,
 single-APK export, single-APK and complete split-set installation, diagnostics,
 explicit Wi-Fi ADB connection lifecycle, bounded multi-headset installation,
-and Windows delivery. It does not own Quest runtime behavior, bypass Android
-permissions, or promise access to protected app data.
+optional Rusty Kiosk installation/operator UX, reviewed Quest power/performance
+controls, and Windows delivery. Rusty Kiosk remains a separate AGPL-licensed
+Android application and normal file-manager features must work when its APKs
+are absent or never installed. This repo does not bypass Android permissions or
+promise access to protected app data.
 
 The GUI and CLI must invoke the same typed `OperatorCommand` routes. Every GUI
 operation must have an exact CLI-equivalent route built from the same immutable
@@ -20,7 +23,11 @@ display structured results; they must not hide ADB or filesystem business logic.
 Transient WPF progress must come from the optional shared `OperatorProgress`
 contract. Use indeterminate state when ADB exposes no honest total; never infer
 percentages from console text, elapsed time, or output volume. Keep CLI JSON as
-one stable final result rather than mixing progress events into stdout.
+one stable final result rather than mixing progress events into stdout. Every
+state-changing route must emit an `OperatorMutationReceipt`: `sent`, then
+`pending`, and only `confirmed` after operation-specific headset readback.
+Prompt admission or ADB exit code alone is not confirmation. Pending and timed-
+out prompt operations remain reconcilable through a later status refresh.
 
 ## Public Boundary
 
@@ -38,8 +45,8 @@ documented.
 - Use serial-scoped ADB for every device operation.
 - Read-only probes come before mutations.
 - Initial file management is limited to list, pull, and explicit push.
-- Do not add delete, uninstall, clear-data, ADB server lifecycle, power, or
-  proximity operations without a separate safety and UX review.
+- Do not add delete, uninstall, clear-data, or ADB server lifecycle operations
+  without a separate safety and UX review.
 - Wi-Fi ADB enable/connect/disconnect is the reviewed exception documented in
   `docs/wifi-adb-and-parallel-install.md`. Every route requires explicit
   operator confirmation. Enablement reads `wlan0` before mutation, scopes
@@ -56,6 +63,15 @@ documented.
   one by one.
 - A copied APK does not include app data, OBB files, downloaded assets, or
   store entitlement.
+- Reviewed device controls are limited to explicit keep-awake/restore and fixed
+  CPU/GPU level/clear operations. They require confirmation and effective-state
+  readback; they are not generic shell access.
+- Rusty Kiosk host control is restricted to its exported `DUMP`-protected,
+  versioned provider. It admits fixed typed commands and bounded SHA-256 tag
+  chunks. Never add arbitrary intents, components, shell commands, or host-
+  supplied headset paths to that contract.
+- Meta permission prompts remain wearer decisions. Showing a Wi-Fi ADB prompt
+  is `pending`; it becomes `confirmed` only when Kiosk reports Wi-Fi ADB enabled.
 
 ## Agent CLI Workflow
 
@@ -85,6 +101,13 @@ meta-quest-file-manager.exe wifi connect --host <quest-ip> --port 5555 --confirm
 meta-quest-file-manager.exe wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb
 meta-quest-file-manager.exe apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json
 meta-quest-file-manager.exe apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json
+meta-quest-file-manager.exe kiosk status --serial <quest-serial> --json
+meta-quest-file-manager.exe kiosk install --serial <usb-serial> --confirm-kiosk-setup
+meta-quest-file-manager.exe kiosk command --serial <quest-serial> --command request-wifi-adb --confirm-kiosk-control --json
+meta-quest-file-manager.exe kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json
+meta-quest-file-manager.exe device status --serial <quest-serial> --json
+meta-quest-file-manager.exe device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
+meta-quest-file-manager.exe device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
 ```
 
 The WPF buttons map to those routes exactly. Both install actions accept
@@ -162,7 +185,7 @@ dotnet run --project src/MetaQuestFileManager.App
 - `MetaQuestFileManager.Core` owns process execution, ADB discovery, command
   construction, typed operator commands, output parsing, transfers, APK
   install/export, Wi-Fi endpoint lifecycle, bounded fan-out, progress units,
-  and hashes.
+  hashes, typed Kiosk hosting, and mutation reconciliation.
 - `MetaQuestFileManager.Cli` is the automation-equivalent operator surface.
 - `MetaQuestFileManager.App` is the Windows WPF projection.
 - Keep external processes behind `ICommandRunner` and preserve cancellation

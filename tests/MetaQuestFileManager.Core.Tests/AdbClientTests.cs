@@ -74,13 +74,16 @@ public sealed class AdbClientTests
                     AllowTestPackages: true));
 
             Assert.Equal(2, result.ApkPaths.Count);
-            Assert.Single(runner.Calls);
+            Assert.Equal(2, runner.Calls.Count);
             Assert.Equal(
                 [
                     "-s", "QUEST123", "install-multiple", "-r", "-d", "-g", "-t",
                     Path.GetFullPath(baseApk), Path.GetFullPath(splitApk)
                 ],
                 runner.Calls[0].Arguments);
+            Assert.Equal(
+                ["-s", "QUEST123", "shell", "pm list packages -3"],
+                runner.Calls[1].Arguments);
         }
         finally
         {
@@ -238,8 +241,10 @@ public sealed class AdbClientTests
             Assert.Equal(
                 "192.0.2.12:5555",
                 Assert.Single(result.Targets, static target => !target.Succeeded).Serial);
+            var installCalls = runner.Calls.Where(call => call[2] == "install").ToArray();
+            Assert.Equal(4, installCalls.Length);
             Assert.All(
-                runner.Calls,
+                installCalls,
                 call =>
                 {
                     Assert.Equal("-s", call[0]);
@@ -273,9 +278,10 @@ public sealed class AdbClientTests
                 maxParallelism: 2);
 
             Assert.True(result.Succeeded);
-            Assert.Equal(2, runner.Calls.Count);
+            var installCalls = runner.Calls.Where(call => call[2] == "install-multiple").ToArray();
+            Assert.Equal(2, installCalls.Length);
             Assert.All(
-                runner.Calls,
+                installCalls,
                 call => Assert.Equal(
                     ["install-multiple", "-r", Path.GetFullPath(baseApk), Path.GetFullPath(splitApk)],
                     call.Skip(2)));

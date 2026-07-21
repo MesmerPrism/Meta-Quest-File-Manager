@@ -80,3 +80,35 @@ or credential storage. A connection can disappear after a headset reboot,
 network change, debugging timeout, or authorization revocation. See
 [Wi-Fi ADB and parallel installation](wifi-adb-and-parallel-install.md) for the
 full workflow and validation contract.
+
+## Rusty Kiosk And Reviewed Device Settings
+
+The optional Kiosk integration does not grant the Windows app general control
+inside Kiosk. ADB shell may call only the versioned, DUMP-protected provider.
+The provider admits a fixed command enum and fixed tag-transfer methods. Tag
+import/export never accepts a headset path: the PC sends or reads ordered Base64
+chunks, capped at 6 KiB each and 256 KiB total, and both sides verify SHA-256
+before Kiosk validates the schema and atomically activates it.
+
+The setup helper receives `WRITE_SECURE_SETTINGS` once from an explicitly
+authorized USB connection. The main Kiosk APK does not receive that permission;
+it may invoke only its same-signer helper's fixed operations. Meta's Wi-Fi ADB
+permission UI remains visible and wearer-controlled.
+
+Keep-awake and CPU/GPU override controls are explicit reviewed commands, not a
+generic shell. Keep-awake is reversible, CPU/GPU values are limited to 0–5,
+and clearing restores app-controlled values. Each route requires confirmation
+and reads effective state back. A mismatch remains pending rather than being
+displayed as successful.
+
+## Mutation Synchronization
+
+Every state-changing operator route follows one state model:
+
+1. `sent`: the exact desired state and target are recorded before dispatch;
+2. `pending`: transport/result and effective-state evidence are outstanding;
+3. `confirmed`: route-specific headset readback matches the desired state;
+4. `failed` or `timed_out`: no matching evidence was obtained.
+
+Timed-out wearer prompts remain reconcilable on a later refresh. Read-only
+status commands do not create mutation receipts.

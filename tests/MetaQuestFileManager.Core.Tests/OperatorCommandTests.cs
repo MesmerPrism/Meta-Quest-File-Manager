@@ -146,6 +146,7 @@ public sealed class OperatorCommandTests
         await File.WriteAllBytesAsync(baseApk, [1]);
         await File.WriteAllBytesAsync(splitApk, [2]);
 
+        var disconnected = false;
         var runner = new RecordingCommandRunner((_, arguments) =>
         {
             if (arguments.SequenceEqual(["-s", "QUEST123", "shell", "ip route"]))
@@ -164,7 +165,13 @@ public sealed class OperatorCommandTests
                 return Success(
                     "List of devices attached\n" +
                     "192.0.2.42:5555 device model:Quest_3\n" +
-                    "192.0.2.43:5555 device model:Quest_3\n");
+                    (disconnected ? string.Empty : "192.0.2.43:5555 device model:Quest_3\n"));
+            }
+
+            if (arguments.SequenceEqual(["disconnect", "192.0.2.43:5555"]))
+            {
+                disconnected = true;
+                return Success("disconnected 192.0.2.43:5555\n");
             }
 
             return Success("Success\n");
@@ -196,7 +203,9 @@ public sealed class OperatorCommandTests
             Assert.Equal("192.0.2.43:5555", connected.WifiAdbConnectionResult!.Endpoint);
             Assert.True(single.ParallelApkInstallResult!.Succeeded);
             Assert.True(bundle.ParallelApkInstallResult!.Succeeded);
-            Assert.True(progress.Values[0].IsIndeterminate);
+            Assert.Contains(progress.Values, static value => value.Stage == "mutation-sent");
+            Assert.Contains(progress.Values, static value => value.Stage == "mutation-pending");
+            Assert.Contains(progress.Values, static value => value.Stage == "mutation-confirmed");
             Assert.Equal(2, progress.Values[^1].CompletedUnits);
             Assert.Equal(2, progress.Values[^1].TotalUnits);
             Assert.Contains(
@@ -260,6 +269,11 @@ public sealed class OperatorCommandTests
             if (arguments.Any(static value => value.StartsWith("ls -1Ap", StringComparison.Ordinal)))
             {
                 return Success("Download/\nexample.txt\n");
+            }
+
+            if (arguments.Any(static value => value.StartsWith("stat -c %s", StringComparison.Ordinal)))
+            {
+                return Success("4\n");
             }
 
             return Success("Success\n");

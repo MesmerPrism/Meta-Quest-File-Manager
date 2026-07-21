@@ -17,7 +17,16 @@ public enum OperatorCommandKind
     ConnectWifiAdb,
     DisconnectWifiAdb,
     InstallApkMany,
-    InstallApkBundleMany
+    InstallApkBundleMany,
+    InspectRustyKiosk,
+    InstallRustyKiosk,
+    ProvisionRustyKiosk,
+    InvokeRustyKiosk,
+    PullRustyKioskTags,
+    PushRustyKioskTags,
+    ReadQuestControls,
+    SetQuestKeepAwake,
+    SetQuestPerformance
 }
 
 public sealed class OperatorCommand
@@ -36,7 +45,15 @@ public sealed class OperatorCommand
         int wifiPort = 5555,
         int maxParallelism = 4,
         bool operatorConfirmed = false,
-        bool overwrite = false)
+        bool overwrite = false,
+        RustyKioskBundle? rustyKioskBundle = null,
+        RustyKioskCommand? rustyKioskCommand = null,
+        string? rustyKioskValue = null,
+        bool? enabled = null,
+        int durationMilliseconds = 28_800_000,
+        int? cpuLevel = null,
+        int? gpuLevel = null,
+        bool clearPerformance = false)
     {
         Kind = kind;
         CliArguments = new ReadOnlyCollection<string>(cliArguments.ToArray());
@@ -54,6 +71,14 @@ public sealed class OperatorCommand
         MaxParallelism = maxParallelism;
         OperatorConfirmed = operatorConfirmed;
         Overwrite = overwrite;
+        RustyKioskBundle = rustyKioskBundle;
+        RustyKioskCommand = rustyKioskCommand;
+        RustyKioskValue = rustyKioskValue;
+        Enabled = enabled;
+        DurationMilliseconds = durationMilliseconds;
+        CpuLevel = cpuLevel;
+        GpuLevel = gpuLevel;
+        ClearPerformance = clearPerformance;
     }
 
     public OperatorCommandKind Kind { get; }
@@ -83,6 +108,22 @@ public sealed class OperatorCommand
     public bool OperatorConfirmed { get; }
 
     public bool Overwrite { get; }
+
+    public RustyKioskBundle? RustyKioskBundle { get; }
+
+    public RustyKioskCommand? RustyKioskCommand { get; }
+
+    public string? RustyKioskValue { get; }
+
+    public bool? Enabled { get; }
+
+    public int DurationMilliseconds { get; }
+
+    public int? CpuLevel { get; }
+
+    public int? GpuLevel { get; }
+
+    public bool ClearPerformance { get; }
 
     public string ToPowerShellCommand(
         string cliExecutable = ".\\meta-quest-file-manager.exe",
@@ -380,6 +421,214 @@ public static class OperatorCommands
             maxParallelism: maxParallelism);
     }
 
+    public static OperatorCommand InstallRustyKiosk(
+        string serial,
+        RustyKioskBundle bundle,
+        bool operatorConfirmed = false)
+    {
+        RequireApproval(operatorConfirmed, "Rusty Kiosk installation and USB setup");
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentNullException.ThrowIfNull(bundle);
+        return new OperatorCommand(
+            OperatorCommandKind.InstallRustyKiosk,
+            [
+                "kiosk", "install", "--serial", serial,
+                "--bundle", bundle.Source,
+                "--confirm-kiosk-setup"
+            ],
+            serial: serial,
+            operatorConfirmed: true,
+            rustyKioskBundle: bundle);
+    }
+
+    public static OperatorCommand InspectRustyKiosk(string serial)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        return new OperatorCommand(
+            OperatorCommandKind.InspectRustyKiosk,
+            ["kiosk", "status", "--serial", serial],
+            serial: serial);
+    }
+
+    public static OperatorCommand ProvisionRustyKiosk(
+        string serial,
+        bool operatorConfirmed = false)
+    {
+        RequireApproval(operatorConfirmed, "Rusty Kiosk USB setup");
+        serial = AndroidInput.RequireSerial(serial);
+        return new OperatorCommand(
+            OperatorCommandKind.ProvisionRustyKiosk,
+            ["kiosk", "provision", "--serial", serial, "--confirm-kiosk-setup"],
+            serial: serial,
+            operatorConfirmed: true);
+    }
+
+    public static OperatorCommand InvokeRustyKiosk(
+        string serial,
+        RustyKioskCommand command,
+        string? value = null,
+        bool operatorConfirmed = false)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        value = value?.Trim();
+        if (command.RequiresValue() && string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{command.ToWireName()} requires a value.", nameof(value));
+        }
+
+        if (!command.AllowsValue() && !string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{command.ToWireName()} does not accept a value.", nameof(value));
+        }
+
+        if (RequiresKioskControlApproval(command))
+        {
+            RequireApproval(operatorConfirmed, $"Rusty Kiosk {command.ToWireName()}");
+        }
+
+        var arguments = new List<string>
+        {
+            "kiosk", "command", "--serial", serial, "--command", command.ToWireName()
+        };
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            arguments.Add("--value");
+            arguments.Add(value);
+        }
+
+        if (RequiresKioskControlApproval(command))
+        {
+            arguments.Add("--confirm-kiosk-control");
+        }
+
+        return new OperatorCommand(
+            OperatorCommandKind.InvokeRustyKiosk,
+            arguments,
+            serial: serial,
+            operatorConfirmed: operatorConfirmed,
+            rustyKioskCommand: command,
+            rustyKioskValue: value);
+    }
+
+    public static OperatorCommand PullRustyKioskTags(string serial, string outputPath)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        var fullPath = Path.GetFullPath(outputPath);
+        return new OperatorCommand(
+            OperatorCommandKind.PullRustyKioskTags,
+            ["kiosk", "tags", "export", "--serial", serial, "--output", fullPath],
+            serial: serial,
+            localPath: fullPath);
+    }
+
+    public static OperatorCommand PushRustyKioskTags(
+        string serial,
+        string inputPath,
+        bool operatorConfirmed = false)
+    {
+        RequireApproval(operatorConfirmed, "Rusty Kiosk tag-file replacement");
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
+        var fullPath = Path.GetFullPath(inputPath);
+        RustyKioskTagFile.ValidateAndRead(fullPath);
+        return new OperatorCommand(
+            OperatorCommandKind.PushRustyKioskTags,
+            [
+                "kiosk", "tags", "import", "--serial", serial,
+                "--file", fullPath,
+                "--confirm-kiosk-control"
+            ],
+            serial: serial,
+            localPath: fullPath,
+            operatorConfirmed: true);
+    }
+
+    public static OperatorCommand ReadQuestControls(string serial)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        return new OperatorCommand(
+            OperatorCommandKind.ReadQuestControls,
+            ["device", "status", "--serial", serial],
+            serial: serial);
+    }
+
+    public static OperatorCommand SetQuestKeepAwake(
+        string serial,
+        bool enabled,
+        int durationMilliseconds = 28_800_000,
+        bool operatorConfirmed = false)
+    {
+        RequireApproval(operatorConfirmed, "Quest keep-awake policy change");
+        serial = AndroidInput.RequireSerial(serial);
+        if (durationMilliseconds is < 60_000 or > 86_400_000)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationMilliseconds),
+                "Keep-awake duration must be between one minute and 24 hours.");
+        }
+
+        return new OperatorCommand(
+            OperatorCommandKind.SetQuestKeepAwake,
+            [
+                "device", "keep-awake", "--serial", serial,
+                enabled ? "--on" : "--off",
+                "--duration-ms", durationMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "--confirm-device-settings"
+            ],
+            serial: serial,
+            operatorConfirmed: true,
+            enabled: enabled,
+            durationMilliseconds: durationMilliseconds);
+    }
+
+    public static OperatorCommand SetQuestPerformance(
+        string serial,
+        int? cpuLevel,
+        int? gpuLevel,
+        bool clear = false,
+        bool operatorConfirmed = false)
+    {
+        RequireApproval(operatorConfirmed, "Quest CPU/GPU override change");
+        serial = AndroidInput.RequireSerial(serial);
+        ValidatePerformanceLevel(cpuLevel, nameof(cpuLevel));
+        ValidatePerformanceLevel(gpuLevel, nameof(gpuLevel));
+        if (!clear && cpuLevel is null && gpuLevel is null)
+        {
+            throw new ArgumentException("Choose a CPU or GPU level, or clear both overrides.");
+        }
+
+        var arguments = new List<string> { "device", "performance", "--serial", serial };
+        if (clear)
+        {
+            arguments.Add("--clear");
+        }
+        else
+        {
+            if (cpuLevel is not null)
+            {
+                arguments.Add("--cpu");
+                arguments.Add(cpuLevel.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            if (gpuLevel is not null)
+            {
+                arguments.Add("--gpu");
+                arguments.Add(gpuLevel.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        arguments.Add("--confirm-device-settings");
+        return new OperatorCommand(
+            OperatorCommandKind.SetQuestPerformance,
+            arguments,
+            serial: serial,
+            operatorConfirmed: true,
+            cpuLevel: cpuLevel,
+            gpuLevel: gpuLevel,
+            clearPerformance: clear);
+    }
+
     private static IReadOnlyList<string> ValidateWifiTargets(IReadOnlyList<string> serials)
     {
         ArgumentNullException.ThrowIfNull(serials);
@@ -439,6 +688,31 @@ public static class OperatorCommands
                 "Wi-Fi ADB changes require explicit operator confirmation.");
         }
     }
+
+    private static bool RequiresKioskControlApproval(RustyKioskCommand command) => command is
+        RustyKioskCommand.RequestWifiAdb or
+        RustyKioskCommand.EnableWifiAfterBoot or
+        RustyKioskCommand.DisableWifiAfterBoot or
+        RustyKioskCommand.DisableWifiAdb or
+        RustyKioskCommand.EnableAccessibility or
+        RustyKioskCommand.DisableAccessibility or
+        RustyKioskCommand.ExitMetaHome;
+
+    private static void RequireApproval(bool operatorConfirmed, string operation)
+    {
+        if (!operatorConfirmed)
+        {
+            throw new InvalidOperationException($"{operation} requires explicit operator confirmation.");
+        }
+    }
+
+    private static void ValidatePerformanceLevel(int? value, string parameterName)
+    {
+        if (value is < 0 or > 5)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, "Quest CPU/GPU level must be between 0 and 5.");
+        }
+    }
 }
 
 public sealed record OperatorExecutionResult(
@@ -451,7 +725,15 @@ public sealed record OperatorExecutionResult(
     ApkBundleInstallResult? ApkBundleInstallResult = null,
     WifiAdbEnableResult? WifiAdbEnableResult = null,
     WifiAdbConnectionResult? WifiAdbConnectionResult = null,
-    ParallelApkInstallResult? ParallelApkInstallResult = null);
+    ParallelApkInstallResult? ParallelApkInstallResult = null,
+    RustyKioskInstallResult? RustyKioskInstallResult = null,
+    RustyKioskProvisionResult? RustyKioskProvisionResult = null,
+    RustyKioskOperatorResult? RustyKioskOperatorResult = null,
+    RustyKioskInstallationStatus? RustyKioskInstallationStatus = null,
+    QuestControlStatus? QuestControlStatus = null,
+    QuestKeepAwakeResult? QuestKeepAwakeResult = null,
+    QuestPerformanceResult? QuestPerformanceResult = null,
+    OperatorMutationReceipt? MutationReceipt = null);
 
 public sealed class OperatorCommandExecutor(AdbClient client)
 {
@@ -463,6 +745,32 @@ public sealed class OperatorCommandExecutor(AdbClient client)
         IProgress<OperatorProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (!OperatorMutations.RequiresHeadsetStateChange(command))
+        {
+            return await ExecuteCoreAsync(command, cancellationToken, progress).ConfigureAwait(false);
+        }
+
+        var tracker = new OperatorMutationTracker(command, progress);
+        tracker.Sent();
+        tracker.Pending();
+        try
+        {
+            var result = await ExecuteCoreAsync(command, cancellationToken, progress).ConfigureAwait(false);
+            var receipt = tracker.Complete(OperatorMutations.Observe(command, result));
+            return result with { MutationReceipt = receipt };
+        }
+        catch (Exception exception)
+        {
+            tracker.Failed(exception);
+            throw;
+        }
+    }
+
+    private async Task<OperatorExecutionResult> ExecuteCoreAsync(
+        OperatorCommand command,
+        CancellationToken cancellationToken,
+        IProgress<OperatorProgress>? progress)
+    {
         progress?.Report(new OperatorProgress(
             command.Kind.ToString(),
             StartingMessage(command.Kind),
@@ -598,6 +906,121 @@ public sealed class OperatorCommandExecutor(AdbClient client)
                             progress).ConfigureAwait(false));
                 }
 
+            case OperatorCommandKind.InstallRustyKiosk:
+                return new OperatorExecutionResult(
+                    command,
+                    RustyKioskInstallResult: await _client.InstallRustyKioskAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        command.RustyKioskBundle ??
+                            throw new InvalidOperationException("The operator command is missing its Rusty Kiosk bundle."),
+                        cancellationToken,
+                        progress).ConfigureAwait(false));
+
+            case OperatorCommandKind.InspectRustyKiosk:
+                {
+                    var serial = Require(command.Serial, nameof(command.Serial));
+                    var status = await _client.GetRustyKioskInstallationStatusAsync(
+                        serial,
+                        cancellationToken).ConfigureAwait(false);
+                    var operatorResult = status.HostOperatorAvailable
+                        ? await _client.InvokeRustyKioskAsync(
+                            serial,
+                            RustyKioskCommand.Status,
+                            cancellationToken: cancellationToken).ConfigureAwait(false)
+                        : null;
+                    return new OperatorExecutionResult(
+                        command,
+                        RustyKioskInstallationStatus: status,
+                        RustyKioskOperatorResult: operatorResult);
+                }
+
+            case OperatorCommandKind.ProvisionRustyKiosk:
+                return new OperatorExecutionResult(
+                    command,
+                    RustyKioskProvisionResult: await _client.ProvisionRustyKioskAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        cancellationToken).ConfigureAwait(false));
+
+            case OperatorCommandKind.InvokeRustyKiosk:
+                {
+                    var serial = Require(command.Serial, nameof(command.Serial));
+                    var result = await _client.InvokeRustyKioskAsync(
+                        serial,
+                        command.RustyKioskCommand ??
+                            throw new InvalidOperationException("The operator command is missing its Rusty Kiosk action."),
+                        command.RustyKioskValue,
+                        cancellationToken).ConfigureAwait(false);
+                    return new OperatorExecutionResult(
+                        command,
+                        RustyKioskOperatorResult: result,
+                        RustyKioskInstallationStatus: await _client.GetRustyKioskInstallationStatusAsync(
+                            serial,
+                            cancellationToken).ConfigureAwait(false));
+                }
+
+            case OperatorCommandKind.PullRustyKioskTags:
+                return new OperatorExecutionResult(
+                    command,
+                    CommandResult: await _client.PullRustyKioskTagFileAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        Require(command.LocalPath, nameof(command.LocalPath)),
+                        cancellationToken).ConfigureAwait(false));
+
+            case OperatorCommandKind.PushRustyKioskTags:
+                {
+                    var serial = Require(command.Serial, nameof(command.Serial));
+                    var transfer = await _client.PushRustyKioskTagFileAsync(
+                        serial,
+                        Require(command.LocalPath, nameof(command.LocalPath)),
+                        cancellationToken).ConfigureAwait(false);
+                    var hotload = await _client.InvokeRustyKioskAsync(
+                        serial,
+                        RustyKioskCommand.Reload,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                    return new OperatorExecutionResult(
+                        command,
+                        CommandResult: transfer,
+                        RustyKioskOperatorResult: hotload,
+                        RustyKioskInstallationStatus: await _client.GetRustyKioskInstallationStatusAsync(
+                            serial,
+                            cancellationToken).ConfigureAwait(false));
+                }
+
+            case OperatorCommandKind.ReadQuestControls:
+                return new OperatorExecutionResult(
+                    command,
+                    QuestControlStatus: await _client.GetQuestControlStatusAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        cancellationToken).ConfigureAwait(false));
+
+            case OperatorCommandKind.SetQuestKeepAwake:
+                {
+                    var keepAwake = await _client.SetQuestKeepAwakeAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        command.Enabled ??
+                            throw new InvalidOperationException("The operator command is missing its keep-awake choice."),
+                        command.DurationMilliseconds,
+                        cancellationToken).ConfigureAwait(false);
+                    return new OperatorExecutionResult(
+                        command,
+                        QuestControlStatus: keepAwake.EffectiveStatus,
+                        QuestKeepAwakeResult: keepAwake);
+                }
+
+            case OperatorCommandKind.SetQuestPerformance:
+                {
+                    var performance = await _client.SetQuestPerformanceLevelsAsync(
+                        Require(command.Serial, nameof(command.Serial)),
+                        command.CpuLevel,
+                        command.GpuLevel,
+                        command.ClearPerformance,
+                        cancellationToken).ConfigureAwait(false);
+                    return new OperatorExecutionResult(
+                        command,
+                        QuestControlStatus: performance.EffectiveStatus,
+                        QuestPerformanceResult: performance);
+                }
+
             default:
                 throw new ArgumentOutOfRangeException(nameof(command), command.Kind, "Unknown operator command.");
         }
@@ -637,6 +1060,15 @@ public sealed class OperatorCommandExecutor(AdbClient client)
         OperatorCommandKind.DisconnectWifiAdb => "Disconnecting Wi-Fi ADB…",
         OperatorCommandKind.InstallApkMany => "Preparing the parallel APK install…",
         OperatorCommandKind.InstallApkBundleMany => "Preparing the parallel APK bundle install…",
+        OperatorCommandKind.InspectRustyKiosk => "Checking the optional Rusty Kiosk integration…",
+        OperatorCommandKind.InstallRustyKiosk => "Installing and provisioning Rusty Kiosk…",
+        OperatorCommandKind.ProvisionRustyKiosk => "Provisioning Rusty Kiosk Setup…",
+        OperatorCommandKind.InvokeRustyKiosk => "Running the typed Rusty Kiosk action…",
+        OperatorCommandKind.PullRustyKioskTags => "Exporting the Rusty Kiosk tag file…",
+        OperatorCommandKind.PushRustyKioskTags => "Importing the Rusty Kiosk tag file…",
+        OperatorCommandKind.ReadQuestControls => "Reading Quest power and performance status…",
+        OperatorCommandKind.SetQuestKeepAwake => "Changing Quest keep-awake policy…",
+        OperatorCommandKind.SetQuestPerformance => "Changing Quest CPU/GPU overrides…",
         _ => "Working…"
     };
 }
