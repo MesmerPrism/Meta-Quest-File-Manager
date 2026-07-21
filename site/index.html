@@ -3,290 +3,209 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Download, install, and learn Meta Quest File Manager for Windows, including its optional Rusty Kiosk controls.">
-  <meta name="theme-color" content="#f3f1ec">
-  <title>Meta Quest File Manager</title>
+  <title>Meta Quest File Manager · Mesmer Prism</title>
+  <link rel="canonical" href="https://mesmerprism.com/Meta-Quest-File-Manager/">
+  <meta name="description" content="Set up Meta Quest File Manager for Windows, connect a Quest, move files, and install APKs through a clear desktop interface.">
+  <meta name="theme-color" content="#f4efe7">
+  <meta property="og:title" content="Meta Quest File Manager · Mesmer Prism">
+  <meta property="og:description" content="Move files and install APKs on your Meta Quest from Windows.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mesmerprism.com/Meta-Quest-File-Manager/">
+  <meta property="og:image" content="https://mesmerprism.com/Meta-Quest-File-Manager/icon-512.png">
   <link rel="icon" href="folder-icon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
+  <link rel="stylesheet" href="https://mesmerprism.com/assets/fonts.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to main content</a>
+
   <header class="site-header">
-    <a class="brand" href="./">
-      <img src="folder-icon.svg" width="28" height="28" alt="">
-      <span>Meta Quest File Manager</span>
-    </a>
-    <nav aria-label="Main navigation">
-      <a href="#download">Download</a>
-      <a href="#install">Install</a>
-      <a href="#prepare">Prepare Quest</a>
-      <a href="#first-use">Use the app</a>
-      <a href="#kiosk">Rusty Kiosk</a>
-      <a href="#help">Help</a>
-      <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager">Source</a>
-    </nav>
+    <div class="shell header-row">
+      <div class="brand-row">
+        <a class="site-name" href="https://mesmerprism.com/" aria-label="Mesmer Prism home">
+          <img class="site-mark" src="https://mesmerprism.com/assets/brand/mesmer-prism-logo.png" alt="" width="1200" height="508">
+          <span>Mesmer Prism</span>
+        </a>
+        <span class="brand-separator" aria-hidden="true">/</span>
+        <a class="product-name" href="./">
+          <img src="folder-icon.svg" width="24" height="24" alt="">
+          <span>Meta Quest File Manager</span>
+        </a>
+      </div>
+      <nav class="site-nav" aria-label="Meta Quest File Manager navigation">
+        <a href="#setup">Set up</a>
+        <a href="#use">First use</a>
+        <a href="#kiosk">Rusty Kiosk</a>
+        <a href="#help">Help</a>
+        <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager">Source</a>
+      </nav>
+    </div>
   </header>
 
-  <main>
-    <section class="intro">
-      <div>
-        <h1>Move files and APKs between Windows and Quest.</h1>
-        <p>Browse the storage that Android exposes through ADB, copy files in either direction, install your own APKs on one or several headsets, retrieve sideloaded single-APK apps, and optionally manage Rusty Kiosk.</p>
-        <div class="actions">
-          <a class="primary" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">Download guided setup</a>
-          <a class="secondary" href="#install">Read the install guide</a>
+  <main id="content" class="shell">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="product-context">For Windows 10 and 11</p>
+      <h1 id="page-title">Move files and install APKs on your Quest from Windows.</h1>
+      <p class="lead">Browse your Quest's shared folders, copy files in either direction, and install apps you have as APK files—all from one Windows app. An APK is an Android app installer file, the format used for Quest apps you build or receive outside the Meta store.</p>
+      <div class="actions">
+        <a class="action-link action-link--strong" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">Download for Windows</a>
+        <a class="action-link" href="#setup">Follow the setup guide</a>
+      </div>
+      <p class="availability">Free and open source under the MIT License. The guided setup is the recommended download.</p>
+    </section>
+
+    <aside class="requirements" aria-labelledby="requirements-title">
+      <h2 id="requirements-title">What you need</h2>
+      <ul>
+        <li>A Windows 10 or 11 PC</li>
+        <li>A Meta Quest in Developer Mode</li>
+        <li>A USB data cable for the first connection</li>
+        <li>Android SDK Platform Tools</li>
+      </ul>
+    </aside>
+
+    <section id="setup" class="section" aria-labelledby="setup-title">
+      <div class="section-heading">
+        <h2 id="setup-title">Set up your first headset</h2>
+        <p>The first connection uses USB. After the headset has authorized this PC, the same app can also help you move to Wi-Fi.</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <h3>Install the Windows app</h3>
+          <p>Open the <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">guided setup</a>. Review the app name and publisher before approving the Windows administrator prompt.</p>
+        </li>
+        <li>
+          <h3>Install Android SDK Platform Tools</h3>
+          <p>Download the current Windows package from <a href="https://developer.android.com/tools/releases/platform-tools">Android Developers</a>. It supplies ADB, the developer connection File Manager uses. You do not need to type ADB commands yourself.</p>
+        </li>
+        <li>
+          <h3>Enable Developer Mode on the Quest</h3>
+          <p>Follow <a href="https://developers.meta.com/horizon/documentation/native/android/mobile-device-setup/">Meta's device setup guide</a>. File Manager cannot enable the account-level setting for you.</p>
+        </li>
+        <li>
+          <h3>Connect, approve, and refresh</h3>
+          <p>Use a USB data cable, put on the headset, and approve the debugging prompt. In File Manager select <strong>Refresh</strong>, then choose the ready <strong>[USB]</strong> headset at the top.</p>
+        </li>
+      </ol>
+      <p class="callout"><strong>Why Windows asks for trust:</strong> this public preview uses a project certificate rather than a commercial code-signing identity. The guided setup explains the certificate before adding it. If your Windows policy blocks that route, use one of the alternative downloads below.</p>
+    </section>
+
+    <section id="use" class="section" aria-labelledby="use-title">
+      <div class="section-heading">
+        <h2 id="use-title">Start with one task</h2>
+        <p>Select a ready headset first. Every action is then scoped to that device.</p>
+      </div>
+      <div class="task-list">
+        <article>
+          <div>
+            <h3>Move a file</h3>
+            <p>Open <strong>Files</strong>. Browse the shared storage shown by the app, select a file or open a folder, then use <strong>Pull</strong> to copy from Quest to Windows or <strong>Push</strong> to copy from Windows to the open Quest folder.</p>
+          </div>
+          <p class="task-note">The starting location is the Quest's shared storage, not private app data.</p>
+        </article>
+        <article>
+          <div>
+            <h3>Install an APK</h3>
+            <p>Open <strong>APKs</strong>, choose an APK on your PC, review the install options, and select <strong>Install on selected headset</strong>. Wait for the result before disconnecting.</p>
+          </div>
+          <p class="task-note">Installing an APK does not copy saves, purchases, downloaded assets, or store entitlement.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="more-title">
+      <div class="section-heading">
+        <h2 id="more-title">Other useful tools</h2>
+        <p>These are available when you need them, but they are not part of the first connection.</p>
+      </div>
+      <div class="feature-list">
+        <article>
+          <h3>APK bundles and export</h3>
+          <p>Install a complete base-and-split APK set together, or export a sideloaded app when Android reports it as one APK file.</p>
+        </article>
+        <article>
+          <h3>Wi-Fi and several headsets</h3>
+          <p>Move an already-authorized headset to Wi-Fi ADB and run one bounded install across several selected Wi-Fi headsets.</p>
+        </article>
+        <article>
+          <h3>Power and performance</h3>
+          <p>Read headset and controller battery levels, keep a connected headset awake, or set and later clear fixed CPU and GPU levels.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="kiosk" class="section" aria-labelledby="kiosk-title">
+      <div class="section-heading">
+        <h2 id="kiosk-title">Optional: add Rusty Kiosk</h2>
+        <p>Rusty Kiosk is a separate headset app that gives you a searchable launcher, portable tags, and normal or softly guarded launch.</p>
+      </div>
+      <div class="kiosk-intro">
+        <div>
+          <p>Open the <strong>Rusty Kiosk</strong> tab to install and provision it over the authorized USB connection. After setup, that tab can manage its catalogue, tags, launch actions, and optional direct link.</p>
+          <p>Nothing in Rusty Kiosk is required for ordinary file browsing, APK installation, Wi-Fi ADB, or device status. Those File Manager functions continue to work when Kiosk is not installed.</p>
         </div>
-        <p class="release-note">For Windows 10 and 11. Free and open source under the MIT License.</p>
-      </div>
-      <div class="summary" aria-label="Before you start">
-        <h2>Before you start</h2>
-        <ul>
-          <li>A Windows PC</li>
-          <li>A Meta Quest in Developer Mode</li>
-          <li>A USB data cable for first connection</li>
-          <li>Android SDK Platform Tools</li>
-          <li>Your own APK files when installing apps</li>
-        </ul>
+        <a class="action-link" href="https://mesmerprism.com/Rusty-Kiosk/">Read the Rusty Kiosk guide</a>
       </div>
     </section>
 
-    <section id="download" class="section">
-      <h2>Choose a download</h2>
-      <p class="section-intro">The guided setup is the normal choice. The other downloads are available when Windows policy or local administration makes that route unsuitable.</p>
-      <div class="download-grid">
-        <article>
-          <h3>Guided setup</h3>
-          <p>Downloads the signed Windows package, installs the project certificate with administrator approval, registers updates, and opens the app.</p>
-          <a class="text-action" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-Setup.exe">Download setup EXE</a>
-        </article>
-        <article>
-          <h3>Manual signed package</h3>
-          <p>Use this if the setup helper is blocked. Install the public certificate, then open the App Installer file or the MSIX directly.</p>
-          <div class="inline-links">
-            <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.cer">Certificate</a>
-            <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.appinstaller">App Installer</a>
-            <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.msix">MSIX</a>
-          </div>
-        </article>
-        <article>
-          <h3>Portable ZIP</h3>
-          <p>Extract and run without package registration. This archive also contains the automation CLI for advanced and agent-driven use.</p>
-          <a class="text-action" href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.zip">Download portable ZIP</a>
-        </article>
+    <section class="section" aria-labelledby="advanced-title">
+      <div class="section-heading">
+        <h2 id="advanced-title">When the recommended path does not fit</h2>
       </div>
-      <p class="notice"><strong>Why Windows asks for trust:</strong> this public preview is signed with a self-issued project certificate, not a commercial code-signing identity. The guided setup asks before adding that certificate to Windows. Smart App Control may still block the helper; use the manual package or portable ZIP in that case.</p>
-    </section>
-
-    <section id="install" class="section guide-section">
-      <h2>Install the app</h2>
-      <ol class="steps">
-        <li>
-          <div>
-            <h3>Download the guided setup</h3>
-            <p>Save <code>MetaQuestFileManager-Setup.exe</code> from the button above, then open it.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Review the Windows prompts</h3>
-            <p>Approve the administrator prompt only if the publisher and app name match this project. The helper explains that it will trust the public package certificate and install the update feed.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Finish setup</h3>
-            <p>The app installs under the stable <strong>Meta Quest File Manager</strong> identity and launches when setup completes. Later releases can update through the registered App Installer feed.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>If setup is blocked</h3>
-            <p>Download the certificate and install it for the local machine in <strong>Trusted People</strong>, then open the App Installer file. If package installation is restricted, extract the portable ZIP and run <code>MetaQuestFileManager.exe</code>.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
-
-    <section id="prepare" class="section guide-section">
-      <h2>Prepare Windows and your Quest</h2>
-      <ol class="steps">
-        <li>
-          <div>
-            <h3>Install Android SDK Platform Tools</h3>
-            <p>The app uses <code>adb.exe</code> but does not redistribute it. Get the current Windows package from <a href="https://developer.android.com/tools/releases/platform-tools">Android Developers</a>. If you do not use Android Studio, extract its <code>platform-tools</code> folder under <code>%LOCALAPPDATA%\Android\Sdk</code>; the app checks that location automatically.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Enable Developer Mode</h3>
-            <p>Follow <a href="https://developers.meta.com/horizon/documentation/native/android/mobile-device-setup/">Meta's device setup guide</a> for your headset and account. This app cannot enable account-level Developer Mode for you.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Connect by USB</h3>
-            <p>Use a USB cable that supports data. Put on the headset and approve its USB debugging prompt. Choose “always allow” only on a PC you trust.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Check the connection</h3>
-            <p>Open Meta Quest File Manager and select <strong>Refresh</strong>. A ready headset appears in the selector at the top. If it says unauthorized, return to the headset and approve the debugging prompt.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
-
-    <section id="first-use" class="section">
-      <h2>Use the app</h2>
-      <p class="section-intro">Select the headset first. Every file and APK action is then scoped to that device unless you explicitly choose several Wi-Fi headsets.</p>
-      <div class="feature-grid">
-        <article>
-          <h3>Browse and copy files</h3>
-          <p>Open the <strong>Files</strong> tab. Browsing starts at <code>/sdcard</code>, the shared-storage tree that includes folders such as <code>Download</code>, <code>DCIM</code>, and <code>Movies</code>. Double-click folders, pull a selected file to Windows, or push a Windows file into the open folder.</p>
-        </article>
-        <article>
-          <h3>Install one APK</h3>
-          <p>Open <strong>APKs</strong>, browse to an APK, review the install options, and choose <strong>Install on selected headset</strong>. The status bar shows honest indeterminate progress while ADB works.</p>
-        </article>
-        <article>
-          <h3>Install an APK bundle</h3>
-          <p>Choose a folder containing the base APK and every required split APK. The app sends all top-level <code>.apk</code> files together as one Android package set; it does not install unrelated apps one by one.</p>
-        </article>
-        <article>
-          <h3>Export a sideloaded APK</h3>
-          <p>Refresh the third-party package list, select a package, and choose <strong>Export selected package</strong>. Export succeeds only when Android reports one APK file and also writes a SHA-256 checksum.</p>
-        </article>
-        <article>
-          <h3>Check power and performance</h3>
-          <p>Open <strong>Device</strong> to read headset and controller battery state. Keep-awake and fixed CPU/GPU controls are explicit ADB maintenance actions with a restore or clear route.</p>
-        </article>
-        <article>
-          <h3>Use Rusty Kiosk only if wanted</h3>
-          <p>The <strong>Rusty Kiosk</strong> tab is optional. Files, APKs, Wi-Fi ADB, and device status continue to work when Kiosk is absent or never installed.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="wifi" class="section guide-section">
-      <h2>Connect and install over Wi-Fi</h2>
-      <ol class="steps">
-        <li>
-          <div>
-            <h3>Start with USB</h3>
-            <p>Keep the PC and headset on the same reachable network. Connect and authorize the headset by USB, then select it at the top of the app.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Enable Wi-Fi ADB</h3>
-            <p>Open <strong>Wi-Fi ADB</strong>, leave port <code>5555</code> unless your setup requires another port, and choose <strong>Enable and connect</strong>. Review the confirmation before the debugging transport changes.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Refresh and select</h3>
-            <p>The wireless connection appears with a <strong>[Wi-Fi]</strong> label. Repeat the USB enablement for each headset you want to use, or connect an already-enabled headset by its local IPv4 address.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Install on several headsets</h3>
-            <p>In <strong>APKs</strong>, check at least two Wi-Fi headsets, choose one APK or one bundle folder, set a sensible parallel limit, and use the checked-headsets install button. Progress and results remain separate for each target.</p>
-          </div>
-        </li>
-      </ol>
-      <p class="notice">Wi-Fi ADB may stop after a headset reboot, network change, or authorization change. Reconnect by USB and enable it again when needed. The app does not restart the global ADB server.</p>
-    </section>
-
-    <section id="kiosk" class="section guide-section">
-      <h2>Optional Rusty Kiosk setup</h2>
-      <p class="section-intro">Rusty Kiosk is a separate open-source Spatial SDK app. It adds an on-headset app catalogue, tags, normal and guarded launch, passthrough controls, and an optional direct PC link. Nothing in this section is required for ordinary file-manager use.</p>
-      <ol class="steps">
-        <li>
-          <div>
-            <h3>Connect once by USB</h3>
-            <p>Authorize the headset as described above, select it in the app, open <strong>Rusty Kiosk</strong>, and choose <strong>Install and provision (USB)</strong>. The app installs the main APK and its same-signer setup helper, grants only the helper's narrow setup permission, and confirms the resulting package state.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Choose the capabilities you want</h3>
-            <p>Inside Rusty Kiosk, open <strong>User controls</strong>. Accessibility enables the soft guard; the direct PC link enables local Kiosk management without routine ADB; Wi-Fi ADB remains a separate maintenance option. Each is visibly labeled and independently reversible.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Pair the direct link</h3>
-            <p>On a trusted shared network or private Windows hotspot, enable <strong>Direct PC link</strong>. Enter its displayed address and pairing code in the Windows Kiosk tab, then connect. The code can be rotated from the headset at any time.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Manage apps and tags</h3>
-            <p>Search the complete Kiosk catalogue, filter or edit tags, retain named entries for apps that are not installed, import or export the tag file, and choose normal or guarded launch. The same fixed operations are available through USB/Wi-Fi ADB or the paired direct link.</p>
-          </div>
-        </li>
-        <li>
-          <div>
-            <h3>Prefer ADB for batch APK installs</h3>
-            <p>The normal APK tab can install several packages without repeated in-headset approval after the PC is authorized. Kiosk's direct installer is an attended fallback: Android may still ask the wearer to confirm each app installation session.</p>
-          </div>
-        </li>
-      </ol>
-      <div class="feature-grid compact-grid">
-        <article>
-          <h3>Soft guard, not lock task</h3>
-          <p>The first two Home presses restore a guarded app. A third within five seconds returns to Rusty Kiosk. From Rusty Kiosk, Home reaches Meta Home normally.</p>
-        </article>
-        <article>
-          <h3>Confirmed state</h3>
-          <p>PC mutations progress through <strong>sent</strong>, <strong>pending</strong>, and <strong>confirmed</strong>. A prompt or successful command alone is not treated as effective headset state.</p>
-        </article>
-      </div>
-      <p class="support-links">Read the dedicated <a href="https://mesmerprism.com/Rusty-Kiosk/">Rusty Kiosk onboarding guide</a> or inspect the <a href="https://github.com/MesmerPrism/Rusty-Kiosk">AGPL-licensed source</a>.</p>
-    </section>
-
-    <section id="help" class="section help-section">
-      <h2>Common questions</h2>
-      <div class="help-list">
+      <div class="details-list">
         <details>
-          <summary>No headset appears after Refresh</summary>
-          <p>Confirm Developer Mode, use a data-capable cable, try another USB port, and check inside the headset for the debugging approval prompt. Also confirm that the footer does not say “ADB not found.”</p>
+          <summary>Use a different Windows download</summary>
+          <p>For a manual signed install, download the <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.cer">certificate</a>, then the <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.appinstaller">App Installer file</a> or <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.msix">MSIX</a>. If package installation is restricted, use the <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.zip">portable ZIP</a>.</p>
         </details>
         <details>
-          <summary>The footer says ADB not found</summary>
-          <p>Install Android SDK Platform Tools in the standard Android SDK location, add its folder to <code>PATH</code>, or set <code>META_QUEST_FILE_MANAGER_ADB</code> to the full path of <code>adb.exe</code>, then reopen the app.</p>
+          <summary>Connect over Wi-Fi</summary>
+          <p>Start with an authorized USB connection. Open <strong>Wi-Fi ADB</strong>, choose <strong>Enable and connect</strong>, review the confirmation, then select the new <strong>[Wi-Fi]</strong> entry. Wi-Fi ADB may stop after a reboot, network change, or authorization change.</p>
+        </details>
+        <details>
+          <summary>Install on several headsets</summary>
+          <p>Connect at least two ready Wi-Fi headsets, check the intended targets in <strong>APKs</strong>, choose one APK or one bundle folder, and set a sensible parallel limit. File Manager keeps a separate result for each headset.</p>
+        </details>
+        <details>
+          <summary>Understand APK export limits</summary>
+          <p>Export works only when Android reports one APK file. Apps made from a base APK plus split APKs are refused so an incomplete backup is never presented as usable.</p>
+        </details>
+      </div>
+    </section>
+
+    <section id="help" class="section" aria-labelledby="help-title">
+      <div class="section-heading">
+        <h2 id="help-title">Help</h2>
+      </div>
+      <div class="details-list">
+        <details>
+          <summary>No headset appears after Refresh</summary>
+          <p>Confirm Developer Mode, try a data-capable cable and another USB port, and look inside the headset for the debugging approval. Also check whether File Manager reports that ADB is missing.</p>
+        </details>
+        <details>
+          <summary>File Manager says ADB is missing</summary>
+          <p>Install Android SDK Platform Tools, then reopen the app. Advanced users can also add its folder to <code>PATH</code> or set <code>META_QUEST_FILE_MANAGER_ADB</code> to the full path of <code>adb.exe</code>.</p>
         </details>
         <details>
           <summary>An APK installs but does not run</summary>
-          <p>The APK may target a different CPU or Android version, require missing assets or services, or depend on another package. Copying an APK does not copy saves, app data, OBB files, downloaded assets, purchases, or store entitlements.</p>
+          <p>The app may target a different CPU or Android version, require another package, or expect assets that were not included. The APK file alone is not always the complete app.</p>
         </details>
         <details>
-          <summary>Why is split-package export refused?</summary>
-          <p>Modern apps can consist of a base APK plus several split APKs. The current export route intentionally refuses those packages so it never presents an incomplete backup as usable.</p>
-        </details>
-        <details>
-          <summary>Can it browse the whole Quest filesystem?</summary>
-          <p>No. Quest has a normal Android folder hierarchy, but ADB shell access is permission-limited. The app shows only paths Android permits and begins in shared storage at <code>/sdcard</code>.</p>
-        </details>
-        <details>
-          <summary>Do I need Rusty Kiosk or the direct link?</summary>
-          <p>No. They are optional. The normal file browser, APK tools, Wi-Fi ADB, and device controls remain available through an authorized ADB connection without installing or enabling Rusty Kiosk.</p>
-        </details>
-        <details>
-          <summary>Why is a Kiosk action still pending?</summary>
-          <p>Some actions require a visible Meta or Android decision. The PC keeps them pending until the headset reports the requested effective state, and a later refresh can reconcile the result.</p>
+          <summary>Can File Manager browse the whole headset?</summary>
+          <p>No. It shows only the paths Android permits through the authorized developer connection. Private app data remains protected.</p>
         </details>
       </div>
-      <p class="support-links">For release checksums and known issues, visit <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases">GitHub Releases</a> or <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/issues">open an issue</a>.</p>
+      <p class="support-links">For checksums, known issues, and bug reports, visit <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases">GitHub Releases</a> or <a href="https://github.com/MesmerPrism/Meta-Quest-File-Manager/issues">open an issue</a>.</p>
     </section>
   </main>
 
-  <footer>
-    <p>Meta Quest File Manager is MIT licensed and independent. It is not affiliated with or endorsed by Meta. Meta Quest is a trademark of Meta Platforms, Inc.</p>
+  <footer class="site-footer">
+    <div class="shell footer-row">
+      <p>Meta Quest File Manager is free software under the MIT License.</p>
+      <p>Independent and not affiliated with or endorsed by Meta. Meta Quest is a trademark of Meta Platforms, Inc.</p>
+    </div>
   </footer>
 </body>
 </html>
