@@ -93,4 +93,5 @@ as enabled state.
 The Windows repository is MIT-licensed. Rusty Kiosk is a separate
 AGPL-3.0-or-later work. Official Windows packages aggregate its release-signed
 APK pair with the Kiosk license, source URL/revision, and SHA-256 manifest. The
-release build rejects debug Kiosk bundles.
+release build rejects debug Kiosk bundles and any version, source revision,
+byte count, SHA-256, source-pointer, or APK-signer mismatch.

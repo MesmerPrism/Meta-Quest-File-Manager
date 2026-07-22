@@ -45,3 +45,7 @@ jobs:
       - name: Public boundary
         shell: pwsh
         run: pwsh -NoProfile -File ./tools/Test-PublicBoundary.ps1
+
+      - name: Kiosk release-bundle verifier
+        shell: pwsh
+        run: pwsh -NoProfile -File ./tools/app/Test-RustyKioskReleaseBundle.ps1 -SelfTest

@@ -3,6 +3,7 @@ param(
     [string]$ReleaseDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
     [string]$ExpectedPackageName = 'MesmerPrism.MetaQuestFileManager',
     [string]$ExpectedPublisher = 'CN=MesmerPrism',
+    [string]$KioskBundleManifestPath,
     [switch]$AllowSelfIssuedTrustFailure
 )
 
@@ -98,6 +99,23 @@ if ($mainPackage.Uri -notmatch '^https://github\.com/MesmerPrism/Meta-Quest-File
     throw "The published App Installer MSIX URI is not release-stable: $($mainPackage.Uri)"
 }
 
+$kioskReceipt = $null
+if ($KioskBundleManifestPath) {
+    $KioskBundleManifestPath = [IO.Path]::GetFullPath($KioskBundleManifestPath)
+    if (-not (Test-Path -LiteralPath $KioskBundleManifestPath -PathType Leaf)) {
+        throw "The verified Rusty Kiosk manifest was not found: $KioskBundleManifestPath"
+    }
+    $kioskManifest = Get-Content -Raw -LiteralPath $KioskBundleManifestPath | ConvertFrom-Json
+    $kioskReceipt = [ordered]@{
+        version = $kioskManifest.version
+        source_url = $kioskManifest.source_url
+        source_revision = $kioskManifest.source_revision
+        signer_sha256 = $kioskManifest.signer_sha256
+        bundle_manifest_sha256 = (Get-FileHash -LiteralPath $KioskBundleManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        files = $kioskManifest.files
+    }
+}
+
 $receipt = [ordered]@{
     schema = 'meta-quest-file-manager.release-validation.v1'
     validated_at_utc = [DateTime]::UtcNow.ToString('o')
@@ -108,6 +126,7 @@ $receipt = [ordered]@{
     package_signature = $packageSignature
     appinstaller_uri = $appInstaller.AppInstaller.Uri
     msix_uri = $mainPackage.Uri
+    rusty_kiosk = $kioskReceipt
     required_assets = @(
         'MetaQuestFileManager-Setup.exe',
         'MetaQuestFileManager-win-x64.msix',
