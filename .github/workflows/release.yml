@@ -11,9 +11,9 @@ on:
         required: true
         type: string
       rusty_kiosk_version:
-        description: "Published Rusty Kiosk release without v, for example 0.6.0"
+        description: "Published Rusty Kiosk release without v, for example 0.6.1"
         required: true
-        default: "0.6.0"
+        default: "0.6.1"
         type: string
 
 permissions:
@@ -92,10 +92,10 @@ jobs:
             $env:KIOSK_VERSION_DEFAULT
           }
           else {
-            '0.6.0'
+            '0.6.1'
           }
           if ($kioskVersion -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Rusty Kiosk version must look like 0.6.0, got $kioskVersion"
+            throw "Rusty Kiosk version must look like 0.6.1, got $kioskVersion"
           }
 
           $release = gh release view "v$kioskVersion" `

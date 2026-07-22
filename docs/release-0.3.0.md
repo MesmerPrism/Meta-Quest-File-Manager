@@ -4,7 +4,7 @@
 
 Release `0.3.0` as the first public File Manager build that contains the
 optional Rusty Kiosk operator surface and the independently published,
-release-signed Rusty Kiosk `0.6.0` bundle. This is a minor version because the
+release-signed Rusty Kiosk `0.6.1` bundle. This is a minor version because the
 public Windows application gains a substantial new optional application and
 transport family while preserving existing file, APK, Wi-Fi ADB, and device
 routes.
@@ -30,6 +30,6 @@ routes.
 ## Validation
 
 The release requires current-main CI, the Kiosk bundle-verifier tamper test,
-exact stable Kiosk `0.6.0` tag resolution, signed Windows asset validation, a
+exact stable Kiosk `0.6.1` tag resolution, signed Windows asset validation, a
 consumer Windows install/launch pass, and a serial-scoped Quest install/status
 pass with fresh package and permission readback.

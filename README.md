@@ -97,7 +97,7 @@ and register the App Installer update feed. See the [release workflow](docs/rele
 for signature and Smart App Control limitations.
 
 The `0.3.0` release line is the first distributable build containing the
-verified Rusty Kiosk `0.6.0` APK pair and the complete optional Kiosk operator
+verified Rusty Kiosk `0.6.1` APK pair and the complete optional Kiosk operator
 surface described below.
 
 ## CLI
