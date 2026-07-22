@@ -11,9 +11,9 @@ on:
         required: true
         type: string
       rusty_kiosk_version:
-        description: "Published Rusty Kiosk release without v, for example 0.5.0"
+        description: "Published Rusty Kiosk release without v, for example 0.6.0"
         required: true
-        default: "0.5.0"
+        default: "0.6.0"
         type: string
 
 permissions:
@@ -29,6 +29,11 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.201
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - uses: microsoft/setup-msbuild@v2
 
@@ -73,6 +78,7 @@ jobs:
             [Convert]::FromBase64String($env:SETUP_PFX_BASE64))
 
       - name: Download the separately published Rusty Kiosk bundle
+        id: kiosk
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,10 +92,21 @@ jobs:
             $env:KIOSK_VERSION_DEFAULT
           }
           else {
-            '0.5.0'
+            '0.6.0'
           }
           if ($kioskVersion -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Rusty Kiosk version must look like 0.5.0, got $kioskVersion"
+            throw "Rusty Kiosk version must look like 0.6.0, got $kioskVersion"
+          }
+
+          $release = gh release view "v$kioskVersion" `
+            --repo MesmerPrism/Rusty-Kiosk `
+            --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.isDraft -or $release.isPrerelease) {
+            throw "Rusty Kiosk v$kioskVersion must be a published stable release."
+          }
+          $sourceRevision = gh api "repos/MesmerPrism/Rusty-Kiosk/commits/v$kioskVersion" --jq .sha
+          if ($LASTEXITCODE -ne 0 -or $sourceRevision -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Could not resolve the exact source commit for Rusty Kiosk v$kioskVersion."
           }
 
           $bundleDirectory = Join-Path $env:GITHUB_WORKSPACE 'artifacts\kiosk-bundle'
@@ -102,6 +119,9 @@ jobs:
             --pattern 'bundle-manifest.json' `
             --pattern 'RUSTY-KIOSK-LICENSE.txt' `
             --pattern 'RUSTY-KIOSK-SOURCE.txt'
+          if ($LASTEXITCODE -ne 0) { throw 'Rusty Kiosk release download failed.' }
+          "version=$kioskVersion" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "source_revision=$sourceRevision" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Build and validate release assets
         shell: pwsh
@@ -127,6 +147,8 @@ jobs:
             -SetupCertificatePath (Join-Path $env:RUNNER_TEMP 'setup-signing.pfx') `
             -SetupCertificatePassword $env:SETUP_PFX_PASSWORD `
             -Publisher $env:PACKAGE_PUBLISHER `
+            -ExpectedKioskVersion '${{ steps.kiosk.outputs.version }}' `
+            -ExpectedKioskSourceRevision '${{ steps.kiosk.outputs.source_revision }}' `
             -PackageTimestampUrl $packageTimestamp `
             -SetupTimestampUrl $setupTimestamp
 
@@ -144,15 +166,13 @@ jobs:
           $assets = Get-ChildItem artifacts/release -File | ForEach-Object FullName
           gh release view $tagName *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tagName $assets --clobber
+            throw "Release $tagName already exists. Publish a new version instead of replacing release assets."
           }
-          else {
-            gh release create $tagName $assets `
-              --title "Meta Quest File Manager $tagName" `
-              --generate-notes `
-              --latest `
-              --target $env:GITHUB_SHA
-          }
+          gh release create $tagName $assets `
+            --title "Meta Quest File Manager $tagName" `
+            --generate-notes `
+            --latest `
+            --target $env:GITHUB_SHA
 
       - name: Remove temporary signing files
         if: always()

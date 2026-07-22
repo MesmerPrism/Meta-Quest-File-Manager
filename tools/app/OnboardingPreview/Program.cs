@@ -57,7 +57,7 @@ internal static class Program
             Find<TextBox>(window, "KioskBundlePathBox").Text = "Included Rusty Kiosk release bundle";
             Find<TextBlock>(window, "KioskBundleStatusText").Text = "Bundle ready: Kiosk app and setup helper found.";
             Find<TextBox>(window, "KioskDirectEndpointBox").Text = "http://quest-headset.local:39873";
-            Find<TextBox>(window, "KioskDirectPairingCodeBox").Text = "482913";
+            Find<TextBox>(window, "KioskDirectPairingCodeBox").Text = "7K3M-P9TX-2Q8D-V4JW-H6RC-N0FA-BS";
             Find<TextBlock>(window, "KioskDirectStatusText").Text = "Direct link: connected on the shared network";
             Find<TextBlock>(window, "KioskInstallStatusText").Text = "Rusty Kiosk: installed";
             Find<TextBlock>(window, "KioskSetupStatusText").Text = "USB setup: helper ready";

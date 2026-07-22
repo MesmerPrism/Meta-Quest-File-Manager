@@ -56,6 +56,8 @@ certificate store into ignored `artifacts/signing`, then run:
 ```powershell
 pwsh -NoProfile -File ./tools/app/Invoke-ReleaseBuild.ps1 `
   -Version <version> `
+  -ExpectedKioskVersion <kiosk-version> `
+  -ExpectedKioskSourceRevision <kiosk-source-commit> `
   -PackageCertificatePath ./artifacts/signing/windows-signing.pfx `
   -PackageCertificatePassword <pfx-password>
 
@@ -72,8 +74,13 @@ receipt records which route ran and never claims the guided route passed.
 The release build preserves the native WAP-produced MSIX, applies SHA-256
 Authenticode signatures with RFC 3161 timestamps, verifies the expected
 publisher, checks the App Installer identity and stable URLs, inspects the MSIX
-payload, and writes checksums. The public validation receipt records release
-filenames rather than local or CI-runner build paths. The consumer test stages a local HTTP feed with range
+payload, and writes checksums. Before packaging, it resolves the published
+Kiosk tag to an exact commit and verifies the bundle version, source pointer,
+all declared byte counts and SHA-256 values, and both APK signer digests. The
+public validation receipt records that Kiosk provenance alongside the Windows
+signatures and public release filenames, never local or CI-runner build paths.
+Existing release assets are not overwritten; any payload change requires a new
+semantic version. The consumer test stages a local HTTP feed with range
 support because the Windows deployment service does not consume workspace file
 URIs like a browser download.
 
@@ -105,4 +112,4 @@ Optional Actions variables select alternate RFC 3161 timestamp services:
 Private keys stay in the Windows certificate store, ignored local artifacts,
 and encrypted GitHub Actions secrets. They are never committed. Publishing a
 tag or manually dispatching the workflow builds, validates, uploads, and then
-creates or updates the matching GitHub Release.
+creates a new matching GitHub Release.

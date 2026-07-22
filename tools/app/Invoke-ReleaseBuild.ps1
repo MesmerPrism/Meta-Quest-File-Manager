@@ -17,6 +17,16 @@ param(
     [string]$SetupTimestampUrl = 'http://timestamp.digicert.com',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
     [string]$KioskBundleDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\kiosk-bundle'),
+
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$ExpectedKioskVersion,
+
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$ExpectedKioskSourceRevision,
+
+    [string]$ApkSignerPath,
     [switch]$SkipBuildAndTest
 )
 
@@ -44,10 +54,11 @@ foreach ($name in $requiredKioskFiles) {
         throw "The public Windows release requires the complete Rusty Kiosk bundle; missing $path"
     }
 }
-$kioskManifest = Get-Content -Raw -LiteralPath (Join-Path $KioskBundleDirectory 'bundle-manifest.json') | ConvertFrom-Json
-if ($kioskManifest.schema -ne 'meta.quest.file_manager.rusty_kiosk_bundle.v1' -or $kioskManifest.build_type -ne 'release') {
-    throw 'The public Windows release requires a release-signed Rusty Kiosk bundle manifest.'
-}
+$kioskVerification = & (Join-Path $PSScriptRoot 'Test-RustyKioskReleaseBundle.ps1') `
+    -BundleDirectory $KioskBundleDirectory `
+    -ExpectedVersion $ExpectedKioskVersion `
+    -ExpectedSourceRevision $ExpectedKioskSourceRevision `
+    -ApkSignerPath $ApkSignerPath
 $defaultKioskBundle = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\kiosk-bundle'))
 if (-not $KioskBundleDirectory.Equals($defaultKioskBundle, [StringComparison]::OrdinalIgnoreCase)) {
     if (Test-Path -LiteralPath $defaultKioskBundle) {
@@ -123,6 +134,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Brand asset validation failed.' }
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') `
     -ReleaseDirectory $OutputDirectory `
     -ExpectedPublisher $Publisher `
+    -KioskBundleManifestPath (Join-Path $KioskBundleDirectory 'bundle-manifest.json') `
     -AllowSelfIssuedTrustFailure
 if ($LASTEXITCODE -ne 0) { throw 'Release asset validation failed.' }
 

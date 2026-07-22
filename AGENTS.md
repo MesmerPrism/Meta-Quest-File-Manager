@@ -156,6 +156,8 @@ Build and verify all public assets through the shared release route:
 ```powershell
 pwsh -NoProfile -File ./tools/app/Invoke-ReleaseBuild.ps1 `
   -Version <version> `
+  -ExpectedKioskVersion <kiosk-version> `
+  -ExpectedKioskSourceRevision <kiosk-source-commit> `
   -PackageCertificatePath ./artifacts/signing/windows-signing.pfx `
   -PackageCertificatePassword <pfx-password>
 
@@ -201,6 +203,10 @@ dotnet run --project src/MetaQuestFileManager.App
 GitHub Pages is the human-facing download surface and GitHub Releases is the
 binary source of truth. The workflow publishes the signed guided setup, signed
 MSIX, App Installer feed, public CER, portable app/CLI archives, checksums, and
-a validation receipt. Private signing material is supplied only through the
+a validation receipt. The build verifies the exact published Kiosk version and
+tag commit, every manifest byte count and SHA-256, both APK signer digests, and
+the source pointer before packaging; the receipt retains that provenance.
+Published assets are never overwritten—any change requires a new version.
+Private signing material is supplied only through the
 Windows certificate store, ignored `artifacts`, and GitHub Actions secrets.
 Never commit private certificate material or generated release assets.
