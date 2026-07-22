@@ -4,7 +4,9 @@ param(
     [string]$SetupPath,
     [switch]$DirectPackage,
     [switch]$SkipLaunch,
-    [switch]$RemoveAfterTest
+    [switch]$RemoveAfterTest,
+    [ValidateRange(20, 300)]
+    [int]$LaunchTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
@@ -210,14 +212,16 @@ if (-not $installed) { throw 'The package was not found after guided setup compl
 $launched = $false
 if (-not $SkipLaunch) {
     Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$($installed.PackageFamilyName)!App"
-    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    # A cold first launch may wait while Windows validates the newly installed
+    # package. Observed consumer systems can take longer than 20 seconds here.
+    $deadline = [DateTime]::UtcNow.AddSeconds($LaunchTimeoutSeconds)
     do {
         Start-Sleep -Milliseconds 300
         $appProcess = Get-Process -Name 'MetaQuestFileManager' -ErrorAction SilentlyContinue |
             Where-Object { $_.Path -like "$($installed.InstallLocation)*" } |
             Select-Object -First 1
     } while (-not $appProcess -and [DateTime]::UtcNow -lt $deadline)
-    if (-not $appProcess) { throw 'The packaged WPF app did not launch within 20 seconds.' }
+    if (-not $appProcess) { throw "The packaged WPF app did not launch within $LaunchTimeoutSeconds seconds." }
     $launched = $true
     $appProcess.CloseMainWindow() | Out-Null
 }
