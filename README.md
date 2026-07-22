@@ -96,9 +96,10 @@ helper requests administrator approval to trust the public package certificate
 and register the App Installer update feed. See the [release workflow](docs/release-workflow.md)
 for signature and Smart App Control limitations.
 
-The `0.3.0` release line is the first distributable build containing the
-verified Rusty Kiosk `0.6.3` APK pair and the complete optional Kiosk operator
-surface described below.
+The current `0.3.1` release contains the verified Rusty Kiosk `0.6.4` APK pair,
+the complete optional Kiosk operator surface described below, and a longer
+bounded first-launch probe for cold Windows package validation. Version `0.3.0`
+remains the first distributable build in this release line.
 
 ## CLI
 
