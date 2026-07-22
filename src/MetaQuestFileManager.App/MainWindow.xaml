@@ -396,7 +396,8 @@
             </TabItem>
 
             <TabItem Header="Rusty Kiosk">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="KioskScrollViewer"
+                              VerticalScrollBarVisibility="Auto">
                     <Grid Margin="16">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
