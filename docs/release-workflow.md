@@ -70,6 +70,10 @@ The default consumer test exercises the elevated guided route. On an
 unattended, non-elevated agent shell, use `-DirectPackage` to validate the
 helper's no-change plan and then install the same signed MSIX directly; the
 receipt records which route ran and never claims the guided route passed.
+The launch probe allows 60 seconds by default because Windows can spend more
+than 20 seconds validating a newly installed package on its first activation;
+use `-LaunchTimeoutSeconds` only when a slower validation environment needs a
+larger bounded window.
 
 The release build preserves the native WAP-produced MSIX, applies SHA-256
 Authenticode signatures with RFC 3161 timestamps, verifies the expected
