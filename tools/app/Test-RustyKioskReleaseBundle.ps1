@@ -43,7 +43,7 @@ Version: $version
 License: GNU Affero General Public License v3.0 or later (see RUSTY-KIOSK-LICENSE.txt)
 "@
         Set-Content -LiteralPath $fakeSigner -Encoding ascii -Value @"
-@echo Signer #1 certificate SHA-256 digest: $signer 1>&2
+@echo V2 Signer: certificate SHA-256 digest: $signer 1>&2
 "@
 
         $fileNames = @(
@@ -183,18 +183,20 @@ function Get-ApkSignerDigest {
         throw "APK signature verification failed for $([IO.Path]::GetFileName($Path))."
     }
     $text = ($output | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-    $match = [regex]::Match(
+    $matches = [regex]::Matches(
         $text,
-        '(?im)Signer\s+#?1\s+certificate\s+SHA-?256\s+digest\s*:\s*([0-9a-fA-F:\- ]{64,128})'
+        '(?im)certificate\s+SHA-?256\s+digest\s*:\s*([0-9a-fA-F:\- ]{64,128})'
     )
-    if (-not $match.Success) {
+    if ($matches.Count -eq 0) {
         throw "No APK signer digest was reported for $([IO.Path]::GetFileName($Path)).`nVerifier output:`n$text"
     }
-    $digest = ($match.Groups[1].Value -replace '[^0-9a-fA-F]', '').ToLowerInvariant()
-    if ($digest.Length -ne 64) {
-        throw "The APK signer digest for $([IO.Path]::GetFileName($Path)) was not a 32-byte SHA-256 value: $digest"
+    $digests = @($matches | ForEach-Object {
+        ($_.Groups[1].Value -replace '[^0-9a-fA-F]', '').ToLowerInvariant()
+    } | Sort-Object -Unique)
+    if ($digests.Count -ne 1 -or $digests[0].Length -ne 64) {
+        throw "Expected exactly one 32-byte APK signer digest for $([IO.Path]::GetFileName($Path)), got: $($digests -join ', ')"
     }
-    return $digest
+    return $digests[0]
 }
 
 $mainSigner = Get-ApkSignerDigest -Path (Join-Path $BundleDirectory 'rusty-kiosk.apk')
