@@ -154,7 +154,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: MetaQuestFileManager-windows-preview
+          name: QuestIonAbleFileManager-windows-preview
           path: artifacts/release
 
       - name: Publish GitHub release
@@ -169,7 +169,7 @@ jobs:
             throw "Release $tagName already exists. Publish a new version instead of replacing release assets."
           }
           gh release create $tagName $assets `
-            --title "Meta Quest File Manager $tagName" `
+            --title "QuestIonAble File Manager $tagName" `
             --generate-notes `
             --latest `
             --target $env:GITHUB_SHA

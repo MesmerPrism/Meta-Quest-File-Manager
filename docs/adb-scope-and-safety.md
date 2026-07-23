@@ -1,6 +1,6 @@
 # ADB Scope And Safety
 
-Meta Quest File Manager assumes Developer Mode is already enabled and the host
+QuestIonAble File Manager assumes Developer Mode is already enabled and the host
 has been authorized in-headset. It does not enable Developer Mode or bypass
 Android permissions.
 

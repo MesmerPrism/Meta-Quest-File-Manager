@@ -37,7 +37,7 @@ general Quest runtime console or fleet manager.
 ## Authority
 
 Android's package manager owns installed package paths. ADB owns transport.
-`MetaQuestFileManager.Core` owns safe command construction, parsing, transfer
+`QuestIonAbleFileManager.Core` owns safe command construction, parsing, transfer
 policy, and export completeness checks. The app and CLI adapt user intent into
 that core and do not redefine behavior.
 

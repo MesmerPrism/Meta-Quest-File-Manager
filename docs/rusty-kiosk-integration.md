@@ -1,7 +1,7 @@
 # Rusty Kiosk Integration And Synchronization
 
 Rusty Kiosk is an optional, separately licensed Android application bundled by
-official Windows releases for convenient installation. Meta Quest File Manager
+official Windows releases for convenient installation. QuestIonAble File Manager
 continues to browse files, transfer APKs, and manage ordinary ADB connections
 when the bundle is absent or Kiosk is never installed.
 

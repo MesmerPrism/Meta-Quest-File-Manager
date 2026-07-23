@@ -9,15 +9,34 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ReleaseDirectory = [IO.Path]::GetFullPath($ReleaseDirectory)
-$setupPath = Join-Path $ReleaseDirectory 'MetaQuestFileManager-Setup.exe'
-$packagePath = Join-Path $ReleaseDirectory 'MetaQuestFileManager-win-x64.msix'
-$appInstallerPath = Join-Path $ReleaseDirectory 'MetaQuestFileManager.appinstaller'
-$certificatePath = Join-Path $ReleaseDirectory 'MetaQuestFileManager.cer'
+$setupPath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager-Setup.exe'
+$packagePath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager-win-x64.msix'
+$appInstallerPath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager.appinstaller'
+$certificatePath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager.cer'
 $receiptPath = Join-Path $ReleaseDirectory 'release-validation.json'
+$legacyAliases = [ordered]@{
+    'MetaQuestFileManager-Setup.exe' = 'QuestIonAbleFileManager-Setup.exe'
+    'MetaQuestFileManager-win-x64.msix' = 'QuestIonAbleFileManager-win-x64.msix'
+    'MetaQuestFileManager.appinstaller' = 'QuestIonAbleFileManager.appinstaller'
+    'MetaQuestFileManager.cer' = 'QuestIonAbleFileManager.cer'
+    'MetaQuestFileManager-win-x64.zip' = 'QuestIonAbleFileManager-win-x64.zip'
+    'meta-quest-file-manager-cli-win-x64.zip' = 'questionable-file-manager-cli-win-x64.zip'
+}
 
 foreach ($path in @($setupPath, $packagePath, $appInstallerPath, $certificatePath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required release asset was not found: $path"
+    }
+}
+foreach ($entry in $legacyAliases.GetEnumerator()) {
+    $legacyPath = Join-Path $ReleaseDirectory $entry.Key
+    $canonicalPath = Join-Path $ReleaseDirectory $entry.Value
+    if (-not (Test-Path -LiteralPath $legacyPath -PathType Leaf)) {
+        throw "Required compatibility alias was not found: $legacyPath"
+    }
+    if ((Get-FileHash -LiteralPath $legacyPath -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath $canonicalPath -Algorithm SHA256).Hash) {
+        throw "Compatibility alias differs from its canonical asset: $($entry.Key)"
     }
 }
 
@@ -80,8 +99,8 @@ try {
             throw "The MSIX package is missing $required."
         }
     }
-    if (-not ($entries | Where-Object { $_ -match '(^|/)MetaQuestFileManager\.exe$' })) {
-        throw 'The MSIX package does not contain MetaQuestFileManager.exe.'
+    if (-not ($entries | Where-Object { $_ -match '(^|/)QuestIonAbleFileManager\.exe$' })) {
+        throw 'The MSIX package does not contain QuestIonAbleFileManager.exe.'
     }
 }
 finally {
@@ -95,7 +114,7 @@ $mainPackage = $appInstaller.SelectSingleNode('/ai:AppInstaller/ai:MainPackage',
 if ($null -eq $mainPackage) { throw 'The App Installer feed is missing MainPackage.' }
 if ($mainPackage.Name -ne $ExpectedPackageName) { throw "Unexpected App Installer package name: $($mainPackage.Name)" }
 if ($mainPackage.Publisher -ne $ExpectedPublisher) { throw "Unexpected App Installer publisher: $($mainPackage.Publisher)" }
-if ($mainPackage.Uri -notmatch '^https://github\.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/') {
+if ($mainPackage.Uri -notmatch '^https://github\.com/MesmerPrism/QuestIonAble-File-Manager/releases/latest/download/') {
     throw "The published App Installer MSIX URI is not release-stable: $($mainPackage.Uri)"
 }
 
@@ -117,7 +136,7 @@ if ($KioskBundleManifestPath) {
 }
 
 $receipt = [ordered]@{
-    schema = 'meta-quest-file-manager.release-validation.v1'
+    schema = 'questionable-file-manager.release-validation.v1'
     validated_at_utc = [DateTime]::UtcNow.ToString('o')
     package_name = $ExpectedPackageName
     package_version = $mainPackage.Version
@@ -128,11 +147,12 @@ $receipt = [ordered]@{
     msix_uri = $mainPackage.Uri
     rusty_kiosk = $kioskReceipt
     required_assets = @(
-        'MetaQuestFileManager-Setup.exe',
-        'MetaQuestFileManager-win-x64.msix',
-        'MetaQuestFileManager.appinstaller',
-        'MetaQuestFileManager.cer'
+        'QuestIonAbleFileManager-Setup.exe',
+        'QuestIonAbleFileManager-win-x64.msix',
+        'QuestIonAbleFileManager.appinstaller',
+        'QuestIonAbleFileManager.cer'
     )
+    compatibility_aliases = $legacyAliases
 }
 $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 $receipt

@@ -90,9 +90,9 @@ function Assert-Ico {
 }
 
 $brandingDirectory = Join-Path $RepositoryRoot 'assets\branding'
-$packageDirectory = Join-Path $RepositoryRoot 'src\MetaQuestFileManager.App.Package\Images'
+$packageDirectory = Join-Path $RepositoryRoot 'src\QuestIonAbleFileManager.App.Package\Images'
 $siteDirectory = Join-Path $RepositoryRoot 'site'
-$applicationIcon = Join-Path $brandingDirectory 'MetaQuestFileManager.ico'
+$applicationIcon = Join-Path $brandingDirectory 'QuestIonAbleFileManager.ico'
 
 Assert-Ico $applicationIcon
 Assert-Ico (Join-Path $siteDirectory 'favicon.ico')
@@ -109,9 +109,9 @@ $siteSvg = Get-Content -LiteralPath (Join-Path $siteDirectory 'folder-icon.svg')
 Assert-Condition ($brandingSvg -eq $siteSvg) 'The website SVG differs from the canonical branding SVG.'
 
 foreach ($projectPath in @(
-    'src\MetaQuestFileManager.App\MetaQuestFileManager.App.csproj',
-    'src\MetaQuestFileManager.Cli\MetaQuestFileManager.Cli.csproj',
-    'src\MetaQuestFileManager.Setup\MetaQuestFileManager.Setup.csproj'
+    'src\QuestIonAbleFileManager.App\QuestIonAbleFileManager.App.csproj',
+    'src\QuestIonAbleFileManager.Cli\QuestIonAbleFileManager.Cli.csproj',
+    'src\QuestIonAbleFileManager.Setup\QuestIonAbleFileManager.Setup.csproj'
 )) {
     $fullProjectPath = Join-Path $RepositoryRoot $projectPath
     [xml]$project = Get-Content -LiteralPath $fullProjectPath -Raw

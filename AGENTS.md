@@ -5,7 +5,7 @@ and public-safe.
 
 ## Product Boundary
 
-Meta Quest File Manager is a Windows-first operator tool for ADB-authorized
+QuestIonAble File Manager is a Windows-first operator tool for ADB-authorized
 Meta Quest headsets. It owns file-transfer UX, installed-package inspection,
 single-APK export, single-APK and complete split-set installation, diagnostics,
 explicit Wi-Fi ADB connection lifecycle, bounded multi-headset installation,
@@ -80,34 +80,37 @@ click, or expose a command transcript from the WPF window. During source work,
 the prefix is:
 
 ```powershell
-dotnet run --project src/MetaQuestFileManager.Cli --
+dotnet run --project src/QuestIonAbleFileManager.Cli --
 ```
 
-In a published Windows archive, invoke `meta-quest-file-manager.exe` directly.
+In a published Windows archive, invoke `questionable-file-manager.exe` directly.
+The former `meta-quest-file-manager.exe` name is a deprecated release-only
+compatibility alias; new documentation, tests, and automation use the canonical
+executable.
 Start with read-only discovery, select one ready serial explicitly, and then
 run the narrow operation:
 
 ```powershell
-meta-quest-file-manager.exe devices --json
-meta-quest-file-manager.exe files list --serial <quest-serial> --path /sdcard --json
-meta-quest-file-manager.exe files pull --serial <quest-serial> --remote <remote-path> --output <local-path>
-meta-quest-file-manager.exe files push --serial <quest-serial> --file <local-path> --remote <remote-path>
-meta-quest-file-manager.exe apk list --serial <quest-serial> --json
-meta-quest-file-manager.exe apk export --serial <quest-serial> --package <package> --output <local-apk>
-meta-quest-file-manager.exe apk install --serial <quest-serial> --file <local-apk>
-meta-quest-file-manager.exe apk install-bundle --serial <quest-serial> --folder <apk-folder>
-meta-quest-file-manager.exe wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
-meta-quest-file-manager.exe wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
-meta-quest-file-manager.exe wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb
-meta-quest-file-manager.exe apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json
-meta-quest-file-manager.exe apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json
-meta-quest-file-manager.exe kiosk status --serial <quest-serial> --json
-meta-quest-file-manager.exe kiosk install --serial <usb-serial> --confirm-kiosk-setup
-meta-quest-file-manager.exe kiosk command --serial <quest-serial> --command request-wifi-adb --confirm-kiosk-control --json
-meta-quest-file-manager.exe kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json
-meta-quest-file-manager.exe device status --serial <quest-serial> --json
-meta-quest-file-manager.exe device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
-meta-quest-file-manager.exe device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
+questionable-file-manager.exe devices --json
+questionable-file-manager.exe files list --serial <quest-serial> --path /sdcard --json
+questionable-file-manager.exe files pull --serial <quest-serial> --remote <remote-path> --output <local-path>
+questionable-file-manager.exe files push --serial <quest-serial> --file <local-path> --remote <remote-path>
+questionable-file-manager.exe apk list --serial <quest-serial> --json
+questionable-file-manager.exe apk export --serial <quest-serial> --package <package> --output <local-apk>
+questionable-file-manager.exe apk install --serial <quest-serial> --file <local-apk>
+questionable-file-manager.exe apk install-bundle --serial <quest-serial> --folder <apk-folder>
+questionable-file-manager.exe wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
+questionable-file-manager.exe wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
+questionable-file-manager.exe wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb
+questionable-file-manager.exe apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json
+questionable-file-manager.exe apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json
+questionable-file-manager.exe kiosk status --serial <quest-serial> --json
+questionable-file-manager.exe kiosk install --serial <usb-serial> --confirm-kiosk-setup
+questionable-file-manager.exe kiosk command --serial <quest-serial> --command request-wifi-adb --confirm-kiosk-control --json
+questionable-file-manager.exe kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json
+questionable-file-manager.exe device status --serial <quest-serial> --json
+questionable-file-manager.exe device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
+questionable-file-manager.exe device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
 ```
 
 The WPF buttons map to those routes exactly. Both install actions accept
@@ -130,10 +133,11 @@ contract.
 Use PowerShell 7.6 or newer through `pwsh` for maintained scripts.
 
 ```powershell
-dotnet build MetaQuestFileManager.slnx --configuration Release
-dotnet test MetaQuestFileManager.slnx --configuration Release
-dotnet run --project src/MetaQuestFileManager.Cli -- --help
+dotnet build QuestIonAbleFileManager.slnx --configuration Release
+dotnet test QuestIonAbleFileManager.slnx --configuration Release
+dotnet run --project src/QuestIonAbleFileManager.Cli -- --help
 pwsh -NoProfile -File ./tools/Test-PublicBoundary.ps1
+pwsh -NoProfile -File ./tools/Test-BrandingContract.ps1
 pwsh -NoProfile -File ./tools/app/Test-BrandAssets.ps1
 ```
 
@@ -146,9 +150,9 @@ For signed release work, first use `--plan` to validate the exact guided
 installer inputs without changing Windows trust or package state:
 
 ```powershell
-artifacts/release/MetaQuestFileManager-Setup.exe --plan --json `
-  --certificate-source artifacts/release/MetaQuestFileManager.cer `
-  --appinstaller-source artifacts/release/MetaQuestFileManager.appinstaller
+artifacts/release/QuestIonAbleFileManager-Setup.exe --plan --json `
+  --certificate-source artifacts/release/QuestIonAbleFileManager.cer `
+  --appinstaller-source artifacts/release/QuestIonAbleFileManager.appinstaller
 ```
 
 Build and verify all public assets through the shared release route:
@@ -179,17 +183,17 @@ Installer update association are part of the release contract.
 Run the app:
 
 ```powershell
-dotnet run --project src/MetaQuestFileManager.App
+dotnet run --project src/QuestIonAbleFileManager.App
 ```
 
 ## Architecture
 
-- `MetaQuestFileManager.Core` owns process execution, ADB discovery, command
+- `QuestIonAbleFileManager.Core` owns process execution, ADB discovery, command
   construction, typed operator commands, output parsing, transfers, APK
   install/export, Wi-Fi endpoint lifecycle, bounded fan-out, progress units,
   hashes, typed Kiosk hosting, and mutation reconciliation.
-- `MetaQuestFileManager.Cli` is the automation-equivalent operator surface.
-- `MetaQuestFileManager.App` is the Windows WPF projection.
+- `QuestIonAbleFileManager.Cli` is the automation-equivalent operator surface.
+- `QuestIonAbleFileManager.App` is the Windows WPF projection.
 - Keep external processes behind `ICommandRunner` and preserve cancellation
   and bounded timeouts.
 - Use `ProcessStartInfo.ArgumentList`; never construct a host shell command.
@@ -207,6 +211,10 @@ a validation receipt. The build verifies the exact published Kiosk version and
 tag commit, every manifest byte count and SHA-256, both APK signer digests, and
 the source pointer before packaging; the receipt retains that provenance.
 Published assets are never overwritten—any change requires a new version.
+The signed package identity `MesmerPrism.MetaQuestFileManager` remains stable
+for update continuity. Rebranded releases publish canonical asset names plus
+byte-identical former-name aliases for the documented migration window; do not
+remove those aliases without a separately reviewed update-compatibility release.
 Private signing material is supplied only through the
 Windows certificate store, ignored `artifacts`, and GitHub Actions secrets.
 Never commit private certificate material or generated release assets.

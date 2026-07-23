@@ -1,6 +1,6 @@
-# Meta Quest File Manager
+# QuestIonAble File Manager
 
-Meta Quest File Manager is a Windows-first desktop application for browsing
+QuestIonAble File Manager is a Windows-first desktop application for browsing
 the ADB-accessible storage on a Meta Quest headset, copying files in either
 direction, installing user-supplied APKs, and exporting sideloaded single-APK
 apps back to a Windows file.
@@ -73,22 +73,23 @@ user; this is not unrestricted access to the entire headset filesystem.
 
 ADB is located in this order:
 
-1. `META_QUEST_FILE_MANAGER_ADB`;
-2. `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`;
-3. `%ANDROID_SDK_ROOT%` or `%ANDROID_HOME%`;
-4. `adb` on `PATH`.
+1. `QUESTIONABLE_FILE_MANAGER_ADB`;
+2. deprecated compatibility alias `META_QUEST_FILE_MANAGER_ADB`;
+3. `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`;
+4. `%ANDROID_SDK_ROOT%` or `%ANDROID_HOME%`;
+5. `adb` on `PATH`.
 
 ## Build
 
 ```powershell
-dotnet build MetaQuestFileManager.slnx
-dotnet test MetaQuestFileManager.slnx
-dotnet run --project src/MetaQuestFileManager.App
+dotnet build QuestIonAbleFileManager.slnx
+dotnet test QuestIonAbleFileManager.slnx
+dotnet run --project src/QuestIonAbleFileManager.App
 ```
 
 ## Install
 
-The [project download page](https://mesmerprism.com/Meta-Quest-File-Manager/)
+The [project download page](https://mesmerprism.com/QuestIonAble-File-Manager/)
 offers the guided Windows setup, manual signed-package route, and portable
 fallback, along with a first-use walkthrough for Platform Tools, Quest Developer
 Mode, USB authorization, file transfer, APK work, and Wi-Fi ADB. The guided
@@ -96,43 +97,44 @@ helper requests administrator approval to trust the public package certificate
 and register the App Installer update feed. See the [release workflow](docs/release-workflow.md)
 for signature and Smart App Control limitations.
 
-The current `0.3.1` release contains the verified Rusty Kiosk `0.6.4` APK pair,
-the complete optional Kiosk operator surface described below, and a longer
-bounded first-launch probe for cold Windows package validation. Version `0.3.0`
-remains the first distributable build in this release line.
+Version `0.4.0` is the first release under the QuestIonAble File Manager name.
+It retains the signed Windows package identity and former release-asset aliases
+so existing `0.3.x` installations and pinned automation can update without
+reinstallation. See [Branding and compatibility](docs/branding-and-compatibility.md).
 
 ## CLI
 
 ```powershell
-dotnet run --project src/MetaQuestFileManager.Cli -- devices
-dotnet run --project src/MetaQuestFileManager.Cli -- files list --serial <quest-serial> --path /sdcard
-dotnet run --project src/MetaQuestFileManager.Cli -- files pull --serial <quest-serial> --remote /sdcard/Download/example.txt --output ./example.txt
-dotnet run --project src/MetaQuestFileManager.Cli -- files push --serial <quest-serial> --file ./example.txt --remote /sdcard/Download/example.txt
-dotnet run --project src/MetaQuestFileManager.Cli -- apk list --serial <quest-serial>
-dotnet run --project src/MetaQuestFileManager.Cli -- apk export --serial <quest-serial> --package com.example.app --output ./com.example.app.apk
-dotnet run --project src/MetaQuestFileManager.Cli -- apk install --serial <quest-serial> --file ./example.apk
-dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle --serial <quest-serial> --folder ./example-apk-set
-dotnet run --project src/MetaQuestFileManager.Cli -- wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
-dotnet run --project src/MetaQuestFileManager.Cli -- wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
-dotnet run --project src/MetaQuestFileManager.Cli -- apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file ./example.apk --parallelism 2 --json
-dotnet run --project src/MetaQuestFileManager.Cli -- apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder ./example-apk-set --parallelism 2 --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk status --serial <quest-serial> --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk install --serial <usb-serial> --confirm-kiosk-setup --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags export --serial <quest-serial> --output ./app-tags.v1.json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk tags import --serial <quest-serial> --file ./app-tags.v1.json --confirm-kiosk-control --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <on-headset-code> --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk
-dotnet run --project src/MetaQuestFileManager.Cli -- kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk --confirm-local-install --json
-dotnet run --project src/MetaQuestFileManager.Cli -- device status --serial <quest-serial> --json
-dotnet run --project src/MetaQuestFileManager.Cli -- device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
-dotnet run --project src/MetaQuestFileManager.Cli -- device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- devices
+dotnet run --project src/QuestIonAbleFileManager.Cli -- files list --serial <quest-serial> --path /sdcard
+dotnet run --project src/QuestIonAbleFileManager.Cli -- files pull --serial <quest-serial> --remote /sdcard/Download/example.txt --output ./example.txt
+dotnet run --project src/QuestIonAbleFileManager.Cli -- files push --serial <quest-serial> --file ./example.txt --remote /sdcard/Download/example.txt
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk list --serial <quest-serial>
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk export --serial <quest-serial> --package com.example.app --output ./com.example.app.apk
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk install --serial <quest-serial> --file ./example.apk
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk install-bundle --serial <quest-serial> --folder ./example-apk-set
+dotnet run --project src/QuestIonAbleFileManager.Cli -- wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb
+dotnet run --project src/QuestIonAbleFileManager.Cli -- wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file ./example.apk --parallelism 2 --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder ./example-apk-set --parallelism 2 --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk status --serial <quest-serial> --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk install --serial <usb-serial> --confirm-kiosk-setup --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk tags export --serial <quest-serial> --output ./app-tags.v1.json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk tags import --serial <quest-serial> --file ./app-tags.v1.json --confirm-kiosk-control --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <on-headset-code> --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk
+dotnet run --project src/QuestIonAbleFileManager.Cli -- kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file ./example.apk --confirm-local-install --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- device status --serial <quest-serial> --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- device keep-awake --serial <quest-serial> --on --confirm-device-settings --json
+dotnet run --project src/QuestIonAbleFileManager.Cli -- device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json
 ```
 
 Pass `--json` to list commands for machine-readable output. Pass `--adb` to
 select an explicit ADB executable without changing global machine settings.
-The Windows release archive places `MetaQuestFileManager.exe` and
-`meta-quest-file-manager.exe` beside each other. The CLI is intended for agents,
+The Windows release archive places `QuestIonAbleFileManager.exe` and
+`questionable-file-manager.exe` beside each other. It temporarily also carries
+`meta-quest-file-manager.exe` as a deprecated compatibility alias. The CLI is intended for agents,
 automation, and advanced operator workflows; it is not displayed in the GUI.
 Wi-Fi state changes require an explicit confirmation in the WPF app or the
 `--confirm-wifi-adb` CLI flag. The app never resets the global ADB server.
@@ -161,6 +163,7 @@ A base APK and its split APKs are submitted together as one session.
 - [Progress reporting contract](docs/progress-reporting.md)
 - [Rusty Kiosk integration and synchronization](docs/rusty-kiosk-integration.md)
 - [Release workflow](docs/release-workflow.md)
+- [Branding and compatibility](docs/branding-and-compatibility.md)
 - [Reference intake](docs/reference-intake.md)
 
 ## Roadmap

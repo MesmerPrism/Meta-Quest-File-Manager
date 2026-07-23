@@ -5,14 +5,15 @@ param(
     [string]$Version,
 
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
+    # Update compatibility contract: do not rename this signed package identity.
     [string]$PackageName = 'MesmerPrism.MetaQuestFileManager',
     [string]$Publisher = 'CN=MesmerPrism',
-    [string]$DisplayName = 'Meta Quest File Manager',
-    [string]$PackageFileName = 'MetaQuestFileManager-win-x64.msix',
-    [string]$AppInstallerFileName = 'MetaQuestFileManager.appinstaller',
-    [string]$CertificateFileName = 'MetaQuestFileManager.cer',
-    [string]$PackageUri = 'https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager-win-x64.msix',
-    [string]$AppInstallerUri = 'https://github.com/MesmerPrism/Meta-Quest-File-Manager/releases/latest/download/MetaQuestFileManager.appinstaller',
+    [string]$DisplayName = 'QuestIonAble File Manager',
+    [string]$PackageFileName = 'QuestIonAbleFileManager-win-x64.msix',
+    [string]$AppInstallerFileName = 'QuestIonAbleFileManager.appinstaller',
+    [string]$CertificateFileName = 'QuestIonAbleFileManager.cer',
+    [string]$PackageUri = 'https://github.com/MesmerPrism/QuestIonAble-File-Manager/releases/latest/download/QuestIonAbleFileManager-win-x64.msix',
+    [string]$AppInstallerUri = 'https://github.com/MesmerPrism/QuestIonAble-File-Manager/releases/latest/download/QuestIonAbleFileManager.appinstaller',
     [string]$CertificatePath,
     [string]$CertificatePassword,
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
@@ -21,10 +22,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$packageProject = Join-Path $repoRoot 'src\MetaQuestFileManager.App.Package\MetaQuestFileManager.App.Package.wapproj'
-$manifestPath = Join-Path $repoRoot 'src\MetaQuestFileManager.App.Package\Package.appxmanifest'
-$appInstallerTemplatePath = Join-Path $repoRoot 'src\MetaQuestFileManager.App.Package\MetaQuestFileManager.appinstaller.template'
-$entryProject = Join-Path $repoRoot 'src\MetaQuestFileManager.App\MetaQuestFileManager.App.csproj'
+$packageProject = Join-Path $repoRoot 'src\QuestIonAbleFileManager.App.Package\QuestIonAbleFileManager.App.Package.wapproj'
+$manifestPath = Join-Path $repoRoot 'src\QuestIonAbleFileManager.App.Package\Package.appxmanifest'
+$appInstallerTemplatePath = Join-Path $repoRoot 'src\QuestIonAbleFileManager.App.Package\QuestIonAbleFileManager.appinstaller.template'
+$entryProject = Join-Path $repoRoot 'src\QuestIonAbleFileManager.App\QuestIonAbleFileManager.App.csproj'
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $packageVersion = "$Version.0"
 

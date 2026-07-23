@@ -13,13 +13,13 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $ReleaseDirectory = [IO.Path]::GetFullPath($ReleaseDirectory)
 $packageName = 'MesmerPrism.MetaQuestFileManager'
-if (-not $SetupPath) { $SetupPath = Join-Path $ReleaseDirectory 'MetaQuestFileManager-Setup.exe' }
+if (-not $SetupPath) { $SetupPath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager-Setup.exe' }
 $setupPath = [IO.Path]::GetFullPath($SetupPath)
-$packagePath = Join-Path $ReleaseDirectory 'MetaQuestFileManager-win-x64.msix'
-$appInstallerPath = Join-Path $ReleaseDirectory 'MetaQuestFileManager.appinstaller'
-$certificatePath = Join-Path $ReleaseDirectory 'MetaQuestFileManager.cer'
+$packagePath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager-win-x64.msix'
+$appInstallerPath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager.appinstaller'
+$certificatePath = Join-Path $ReleaseDirectory 'QuestIonAbleFileManager.cer'
 $verifyDirectory = Join-Path $repoRoot 'artifacts\verify\consumer-install'
-$deploymentStagingDirectory = Join-Path $env:TEMP 'MetaQuestFileManagerConsumerInstall'
+$deploymentStagingDirectory = Join-Path $env:TEMP 'QuestIonAbleFileManagerConsumerInstall'
 
 foreach ($path in @($setupPath, $packagePath, $appInstallerPath, $certificatePath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing test input: $path" }
@@ -43,9 +43,9 @@ finally {
 }
 $trustedBefore = Test-Path -LiteralPath "Cert:\CurrentUser\TrustedPeople\$thumbprint"
 
-$localPackagePath = Join-Path $deploymentStagingDirectory 'MetaQuestFileManager-win-x64.msix'
-$localCertificatePath = Join-Path $deploymentStagingDirectory 'MetaQuestFileManager.cer'
-$localAppInstallerPath = Join-Path $deploymentStagingDirectory 'MetaQuestFileManager.local.appinstaller'
+$localPackagePath = Join-Path $deploymentStagingDirectory 'QuestIonAbleFileManager-win-x64.msix'
+$localCertificatePath = Join-Path $deploymentStagingDirectory 'QuestIonAbleFileManager.cer'
+$localAppInstallerPath = Join-Path $deploymentStagingDirectory 'QuestIonAbleFileManager.local.appinstaller'
 Copy-Item -LiteralPath $packagePath -Destination $localPackagePath
 Copy-Item -LiteralPath $certificatePath -Destination $localCertificatePath
 
@@ -54,9 +54,9 @@ $portProbe.Start()
 $port = ([Net.IPEndPoint]$portProbe.LocalEndpoint).Port
 $portProbe.Stop()
 $feedBaseUri = "http://127.0.0.1:$port"
-$localAppInstallerUri = "$feedBaseUri/MetaQuestFileManager.local.appinstaller"
-$localPackageUri = "$feedBaseUri/MetaQuestFileManager-win-x64.msix"
-$localCertificateUri = "$feedBaseUri/MetaQuestFileManager.cer"
+$localAppInstallerUri = "$feedBaseUri/QuestIonAbleFileManager.local.appinstaller"
+$localPackageUri = "$feedBaseUri/QuestIonAbleFileManager-win-x64.msix"
+$localCertificateUri = "$feedBaseUri/QuestIonAbleFileManager.cer"
 
 [xml]$appInstaller = Get-Content -LiteralPath $appInstallerPath -Raw
 $namespace = [Xml.XmlNamespaceManager]::new($appInstaller.NameTable)
@@ -217,7 +217,7 @@ if (-not $SkipLaunch) {
     $deadline = [DateTime]::UtcNow.AddSeconds($LaunchTimeoutSeconds)
     do {
         Start-Sleep -Milliseconds 300
-        $appProcess = Get-Process -Name 'MetaQuestFileManager' -ErrorAction SilentlyContinue |
+        $appProcess = Get-Process -Name 'QuestIonAbleFileManager' -ErrorAction SilentlyContinue |
             Where-Object { $_.Path -like "$($installed.InstallLocation)*" } |
             Select-Object -First 1
     } while (-not $appProcess -and [DateTime]::UtcNow -lt $deadline)
@@ -227,7 +227,7 @@ if (-not $SkipLaunch) {
 }
 
 $receipt = [ordered]@{
-    schema = 'meta-quest-file-manager.consumer-install.v1'
+    schema = 'questionable-file-manager.consumer-install.v1'
     validated_at_utc = [DateTime]::UtcNow.ToString('o')
     package_name = $installed.Name
     package_full_name = $installed.PackageFullName

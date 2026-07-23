@@ -5,7 +5,7 @@ param(
     [string]$Version,
 
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
-    [string]$FileName = 'MetaQuestFileManager-Setup.exe',
+    [string]$FileName = 'QuestIonAbleFileManager-Setup.exe',
     [string]$CertificatePath,
     [string]$CertificatePassword,
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
@@ -14,7 +14,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$project = Join-Path $repoRoot 'src\MetaQuestFileManager.Setup\MetaQuestFileManager.Setup.csproj'
+$project = Join-Path $repoRoot 'src\QuestIonAbleFileManager.Setup\QuestIonAbleFileManager.Setup.csproj'
 $publishDirectory = Join-Path $repoRoot 'artifacts\setup-publish'
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 
@@ -42,7 +42,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
     --output $publishDirectory
 if ($LASTEXITCODE -ne 0) { throw "Setup publish failed with exit code $LASTEXITCODE" }
 
-$publishedExe = Join-Path $publishDirectory 'MetaQuestFileManager.Setup.exe'
+$publishedExe = Join-Path $publishDirectory 'QuestIonAbleFileManager.Setup.exe'
 $outputExe = Join-Path $OutputDirectory $FileName
 Copy-Item -LiteralPath $publishedExe -Destination $outputExe -Force
 

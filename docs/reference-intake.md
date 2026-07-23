@@ -10,7 +10,7 @@
 - Overreach rejected: no store-app redistribution, entitlement bypass, app-data
   backup claim, or assumption that a Quest APK runs on unrelated Android
   hardware.
-- Target: package inspection and export in `MetaQuestFileManager.Core`.
+- Target: package inspection and export in `QuestIonAbleFileManager.Core`.
 - Validation: fake-runner unit tests plus a later serial-scoped live smoke.
 
 The original transcript remains private; this public note contains only the

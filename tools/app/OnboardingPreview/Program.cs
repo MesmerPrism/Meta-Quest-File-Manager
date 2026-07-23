@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using MetaQuestFileManager.App;
-using MetaQuestFileManager.Core;
+using QuestIonAbleFileManager.App;
+using QuestIonAbleFileManager.Core;
 
 internal static class Program
 {
@@ -19,7 +19,7 @@ internal static class Program
             : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "onboarding-previews"));
         Directory.CreateDirectory(outputDirectory);
 
-        var application = new MetaQuestFileManager.App.App();
+        var application = new QuestIonAbleFileManager.App.App();
         application.InitializeComponent();
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 

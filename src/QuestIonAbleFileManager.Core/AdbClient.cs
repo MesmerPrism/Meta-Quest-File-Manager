@@ -1,0 +1,1222 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace QuestIonAbleFileManager.Core;
+
+public sealed class AdbClient
+{
+    private static readonly TimeSpan InspectionTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(5);
+    private readonly ICommandRunner _runner;
+
+    public AdbClient(string adbPath, ICommandRunner? runner = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(adbPath);
+        AdbPath = adbPath;
+        _runner = runner ?? new CommandRunner();
+    }
+
+    public string AdbPath { get; }
+
+    public static AdbClient CreateDefault(string? explicitAdbPath = null, ICommandRunner? runner = null) =>
+        new(AdbLocator.FindOrThrow(explicitAdbPath), runner);
+
+    public async Task<IReadOnlyList<QuestDevice>> GetDevicesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(
+            new[] { "devices", "-l" },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess("ADB device discovery");
+        return AdbOutputParser.ParseDevices(result.StandardOutput);
+    }
+
+    public async Task<IReadOnlyList<RemoteEntry>> ListRemoteDirectoryAsync(
+        string serial,
+        string remotePath,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        remotePath = AndroidInput.RequireRemotePath(remotePath);
+        var command = $"ls -1Ap -- {AndroidInput.ShellQuote(remotePath)}";
+        var result = await RunForDeviceAsync(
+            serial,
+            new[] { "shell", command },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"List {remotePath}");
+        return AdbOutputParser.ParseRemoteDirectory(remotePath, result.StandardOutput);
+    }
+
+    public async Task<IReadOnlyList<string>> GetThirdPartyPackageNamesAsync(
+        string serial,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var result = await RunForDeviceAsync(
+            serial,
+            new[] { "shell", "pm list packages -3" },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess("List third-party packages");
+        return AdbOutputParser.ParsePackageNames(result.StandardOutput);
+    }
+
+    public async Task<QuestPackage> InspectPackageAsync(
+        string serial,
+        string packageName,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        packageName = AndroidInput.RequirePackageName(packageName);
+        var result = await RunForDeviceAsync(
+            serial,
+            new[] { "shell", $"pm path {AndroidInput.ShellQuote(packageName)}" },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Inspect package {packageName}");
+
+        var paths = AdbOutputParser.ParsePackagePaths(result.StandardOutput);
+        if (paths.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Android did not report an installed APK path for {packageName}.");
+        }
+
+        return new QuestPackage(packageName, paths);
+    }
+
+    public async Task<CommandResult> PullFileAsync(
+        string serial,
+        string remotePath,
+        string localPath,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        remotePath = AndroidInput.RequireRemotePath(remotePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(localPath);
+
+        var fullLocalPath = Path.GetFullPath(localPath);
+        var parent = Path.GetDirectoryName(fullLocalPath);
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+
+        var result = await RunForDeviceAsync(
+            serial,
+            new[] { "pull", remotePath, fullLocalPath },
+            TransferTimeout,
+            cancellationToken).ConfigureAwait(false);
+        return result.EnsureSuccess($"Pull {remotePath}");
+    }
+
+    public async Task<CommandResult> PushFileAsync(
+        string serial,
+        string localPath,
+        string remotePath,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        remotePath = AndroidInput.RequireRemotePath(remotePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(localPath);
+        var fullLocalPath = Path.GetFullPath(localPath);
+        if (!File.Exists(fullLocalPath))
+        {
+            throw new FileNotFoundException("The local file to push was not found.", fullLocalPath);
+        }
+
+        var result = await RunForDeviceAsync(
+            serial,
+            new[] { "push", fullLocalPath, remotePath },
+            TransferTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Push {Path.GetFileName(fullLocalPath)}");
+        await VerifyRemoteFileSizeAsync(
+            serial,
+            remotePath,
+            new FileInfo(fullLocalPath).Length,
+            cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    public async Task<CommandResult> InstallApkAsync(
+        string serial,
+        string apkPath,
+        ApkInstallOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apkPath);
+        var fullApkPath = Path.GetFullPath(apkPath);
+        if (!File.Exists(fullApkPath))
+        {
+            throw new FileNotFoundException("The APK to install was not found.", fullApkPath);
+        }
+
+        if (!string.Equals(Path.GetExtension(fullApkPath), ".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The install input must be an .apk file.", nameof(apkPath));
+        }
+
+        var arguments = CreateInstallArguments("install", options);
+        arguments.Add(fullApkPath);
+        var result = await RunForDeviceAsync(
+            serial,
+            arguments,
+            TransferTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Install {Path.GetFileName(fullApkPath)}");
+        await GetThirdPartyPackageNamesAsync(serial, cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    public async Task<ApkBundleInstallResult> InstallApkBundleAsync(
+        string serial,
+        IReadOnlyList<string> apkPaths,
+        ApkInstallOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentNullException.ThrowIfNull(apkPaths);
+        if (apkPaths.Count < 2)
+        {
+            throw new InvalidDataException(
+                "An APK bundle install requires at least two APK files.");
+        }
+
+        var normalizedPaths = apkPaths.Select(ValidateInstallApkPath).ToArray();
+        if (normalizedPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedPaths.Length)
+        {
+            throw new InvalidDataException("The APK bundle contains the same APK path more than once.");
+        }
+
+        var arguments = CreateInstallArguments("install-multiple", options);
+        arguments.AddRange(normalizedPaths);
+        var result = await RunForDeviceAsync(
+            serial,
+            arguments,
+            TransferTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Install APK bundle ({normalizedPaths.Length} parts)");
+        await GetThirdPartyPackageNamesAsync(serial, cancellationToken).ConfigureAwait(false);
+        return new ApkBundleInstallResult(normalizedPaths, result);
+    }
+
+    public async Task<WifiAdbEnableResult> EnableWifiAdbAndConnectAsync(
+        string usbSerial,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        usbSerial = AndroidInput.RequireUsbSerial(usbSerial);
+        port = AndroidInput.RequireTcpPort(port);
+
+        progress?.Report(new OperatorProgress(
+            "wifi-address",
+            "Reading the headset Wi-Fi address…",
+            0,
+            3));
+        var addressProbe = await RunForDeviceAsync(
+            usbSerial,
+            new[] { "shell", "ip route" },
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        addressProbe.EnsureSuccess("Read the headset Wi-Fi address");
+        var host = AdbOutputParser.ParseWifiIpv4Address(addressProbe.StandardOutput);
+
+        progress?.Report(new OperatorProgress(
+            "wifi-enable",
+            "Enabling Wi-Fi ADB on the selected headset…",
+            1,
+            3));
+        var tcpIpCommand = await RunForDeviceAsync(
+            usbSerial,
+            new[] { "tcpip", port.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        tcpIpCommand.EnsureSuccess($"Enable Wi-Fi ADB on TCP port {port}");
+
+        progress?.Report(new OperatorProgress(
+            "wifi-connect",
+            "Connecting to the headset over Wi-Fi…",
+            2,
+            3));
+        var connection = await ConnectWifiAdbAsync(host, port, cancellationToken).ConfigureAwait(false);
+        progress?.Report(new OperatorProgress(
+            "wifi-ready",
+            "Wi-Fi ADB is connected and ready.",
+            3,
+            3));
+        return new WifiAdbEnableResult(
+            usbSerial,
+            host,
+            port,
+            connection.Endpoint,
+            addressProbe,
+            tcpIpCommand,
+            connection);
+    }
+
+    public async Task<WifiAdbConnectionResult> ConnectWifiAdbAsync(
+        string host,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        host = AndroidInput.RequireWifiHost(host);
+        port = AndroidInput.RequireTcpPort(port);
+        var endpoint = AndroidInput.CreateWifiEndpoint(host, port);
+        progress?.Report(new OperatorProgress(
+            "wifi-connect",
+            "Connecting to the Wi-Fi ADB endpoint…",
+            0,
+            2));
+        var result = await RunAsync(
+            new[] { "connect", endpoint },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Connect to Wi-Fi ADB at {endpoint}");
+        if (!AdbOutputParser.IsSuccessfulWifiConnect(result.StandardOutput, endpoint))
+        {
+            throw new InvalidOperationException(
+                $"ADB did not confirm a connection to {endpoint}: {result.CondensedOutput}");
+        }
+
+        progress?.Report(new OperatorProgress(
+            "wifi-verify",
+            "Verifying the connected headset…",
+            1,
+            2));
+        QuestDevice? device = null;
+        for (var attempt = 0; attempt < 4 && device is null; attempt++)
+        {
+            var devices = await GetDevicesAsync(cancellationToken).ConfigureAwait(false);
+            device = devices.FirstOrDefault(candidate =>
+                string.Equals(candidate.Serial, endpoint, StringComparison.OrdinalIgnoreCase));
+            if (device is null && attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (device is null)
+        {
+            throw new InvalidOperationException(
+                $"ADB reported a connection to {endpoint}, but that endpoint did not appear in the device list.");
+        }
+
+        if (!device.IsReady)
+        {
+            throw new InvalidOperationException(
+                $"Wi-Fi ADB endpoint {endpoint} is {device.State}. Approve debugging in the headset and reconnect.");
+        }
+
+        progress?.Report(new OperatorProgress(
+            "wifi-ready",
+            "Wi-Fi ADB is connected and ready.",
+            2,
+            2));
+        return new WifiAdbConnectionResult(host, port, endpoint, result, device);
+    }
+
+    public async Task<CommandResult> DisconnectWifiAdbAsync(
+        string host,
+        int port = 5555,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var endpoint = AndroidInput.CreateWifiEndpoint(host, port);
+        progress?.Report(new OperatorProgress(
+            "wifi-disconnect",
+            "Disconnecting the Wi-Fi ADB endpoint…",
+            0,
+            1));
+        var result = await RunAsync(
+            new[] { "disconnect", endpoint },
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        result.EnsureSuccess($"Disconnect Wi-Fi ADB endpoint {endpoint}");
+        var devices = await GetDevicesAsync(cancellationToken).ConfigureAwait(false);
+        if (devices.Any(device =>
+                string.Equals(device.Serial, endpoint, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"ADB accepted the disconnect request, but {endpoint} is still present in device readback.");
+        }
+
+        progress?.Report(new OperatorProgress(
+            "wifi-disconnected",
+            "The Wi-Fi ADB endpoint is disconnected.",
+            1,
+            1));
+        return result;
+    }
+
+    public async Task<ParallelApkInstallResult> InstallApkOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        string apkPath,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var targets = ValidateWifiInstallTargets(serials);
+        var normalizedPath = ValidateInstallApkPath(apkPath);
+        var arguments = CreateInstallArguments("install", options);
+        arguments.Add(normalizedPath);
+        return await InstallOnManyWifiDevicesAsync(
+            targets,
+            [normalizedPath],
+            arguments,
+            maxParallelism,
+            cancellationToken,
+            progress).ConfigureAwait(false);
+    }
+
+    public async Task<ParallelApkInstallResult> InstallApkBundleOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        IReadOnlyList<string> apkPaths,
+        ApkInstallOptions? options = null,
+        int maxParallelism = 4,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        var targets = ValidateWifiInstallTargets(serials);
+        ArgumentNullException.ThrowIfNull(apkPaths);
+        if (apkPaths.Count < 2)
+        {
+            throw new InvalidDataException("An APK bundle install requires at least two APK files.");
+        }
+
+        var normalizedPaths = apkPaths.Select(ValidateInstallApkPath).ToArray();
+        if (normalizedPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedPaths.Length)
+        {
+            throw new InvalidDataException("The APK bundle contains the same APK path more than once.");
+        }
+
+        var arguments = CreateInstallArguments("install-multiple", options);
+        arguments.AddRange(normalizedPaths);
+        return await InstallOnManyWifiDevicesAsync(
+            targets,
+            normalizedPaths,
+            arguments,
+            maxParallelism,
+            cancellationToken,
+            progress).ConfigureAwait(false);
+    }
+
+    public async Task<ApkExportResult> ExportSingleApkAsync(
+        string serial,
+        string packageName,
+        string outputPath,
+        bool overwrite = false,
+        CancellationToken cancellationToken = default)
+    {
+        var package = await InspectPackageAsync(serial, packageName, cancellationToken)
+            .ConfigureAwait(false);
+        if (package.ApkPaths.Count != 1)
+        {
+            throw new SplitPackageException(package.PackageName, package.ApkPaths);
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        var fullOutputPath = Path.GetFullPath(outputPath);
+        if (!string.Equals(Path.GetExtension(fullOutputPath), ".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The export destination must end in .apk.", nameof(outputPath));
+        }
+
+        var checksumPath = fullOutputPath + ".sha256";
+        if (!overwrite && (File.Exists(fullOutputPath) || File.Exists(checksumPath)))
+        {
+            throw new IOException("The APK or checksum destination already exists. Choose another path or allow overwrite.");
+        }
+
+        await PullFileAsync(
+            serial,
+            package.ApkPaths[0],
+            fullOutputPath,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!File.Exists(fullOutputPath))
+        {
+            throw new IOException("ADB reported success but the exported APK was not created.");
+        }
+
+        var sha256 = await ComputeSha256Async(fullOutputPath, cancellationToken).ConfigureAwait(false);
+        var checksumLine = $"{sha256.ToLowerInvariant()}  {Path.GetFileName(fullOutputPath)}{Environment.NewLine}";
+        await File.WriteAllTextAsync(checksumPath, checksumLine, cancellationToken).ConfigureAwait(false);
+
+        return new ApkExportResult(
+            package.PackageName,
+            package.ApkPaths[0],
+            fullOutputPath,
+            checksumPath,
+            sha256,
+            new FileInfo(fullOutputPath).Length);
+    }
+
+    public async Task<RustyKioskInstallationStatus> GetRustyKioskInstallationStatusAsync(
+        string serial,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var mainDump = await GetPackageDumpAsync(serial, RustyKioskContract.MainPackage, cancellationToken)
+            .ConfigureAwait(false);
+        var helperDump = await GetPackageDumpAsync(serial, RustyKioskContract.SetupHelperPackage, cancellationToken)
+            .ConfigureAwait(false);
+        var mainInstalled = mainDump.Succeeded && mainDump.StandardOutput.Contains(
+            $"Package [{RustyKioskContract.MainPackage}]",
+            StringComparison.Ordinal);
+        var helperInstalled = helperDump.Succeeded && helperDump.StandardOutput.Contains(
+            $"Package [{RustyKioskContract.SetupHelperPackage}]",
+            StringComparison.Ordinal);
+        var helperReady = helperInstalled && HasGrantedPermission(
+            helperDump.StandardOutput,
+            RustyKioskContract.WriteSecureSettingsPermission);
+        var controlGranted = mainInstalled && HasGrantedPermission(
+            mainDump.StandardOutput,
+            RustyKioskContract.SetupControlPermission);
+        var operatorAvailable = false;
+        if (mainInstalled)
+        {
+            var contract = await RunForDeviceAsync(
+                serial,
+                [
+                    "shell", "content", "call",
+                    "--uri", RustyKioskContract.OperatorUri,
+                    "--method", "contract"
+                ],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+            operatorAvailable = contract.Succeeded &&
+                BundleBoolean(contract.StandardOutput, "accepted") == true &&
+                string.Equals(
+                    BundleValue(contract.StandardOutput, "schema"),
+                    RustyKioskContract.HostOperatorSchema,
+                    StringComparison.Ordinal);
+        }
+
+        return new RustyKioskInstallationStatus(
+            mainInstalled,
+            mainInstalled ? ParsePackageVersion(mainDump.StandardOutput) : null,
+            helperInstalled,
+            helperInstalled ? ParsePackageVersion(helperDump.StandardOutput) : null,
+            helperReady,
+            controlGranted,
+            operatorAvailable);
+    }
+
+    public async Task<RustyKioskInstallResult> InstallRustyKioskAsync(
+        string serial,
+        RustyKioskBundle bundle,
+        CancellationToken cancellationToken = default,
+        IProgress<OperatorProgress>? progress = null)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentNullException.ThrowIfNull(bundle);
+        progress?.Report(new OperatorProgress("kiosk-helper-install", "Installing Rusty Kiosk Setup…", 0, 4));
+        var helperInstall = await InstallApkAsync(
+            serial,
+            bundle.SetupHelperApkPath,
+            new ApkInstallOptions(ReplaceExisting: true, AllowDowngrade: true),
+            cancellationToken).ConfigureAwait(false);
+        progress?.Report(new OperatorProgress("kiosk-helper-grant", "Provisioning the fixed setup helper…", 1, 4));
+        var settingsGrant = await RunForDeviceAsync(
+            serial,
+            [
+                "shell", "pm", "grant",
+                RustyKioskContract.SetupHelperPackage,
+                RustyKioskContract.WriteSecureSettingsPermission
+            ],
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        settingsGrant.EnsureSuccess("Provision Rusty Kiosk Setup");
+        progress?.Report(new OperatorProgress("kiosk-main-install", "Installing Rusty Kiosk…", 2, 4));
+        var mainInstall = await InstallApkAsync(
+            serial,
+            bundle.MainApkPath,
+            new ApkInstallOptions(ReplaceExisting: true, AllowDowngrade: true),
+            cancellationToken).ConfigureAwait(false);
+        progress?.Report(new OperatorProgress("kiosk-verify", "Verifying Rusty Kiosk setup authority…", 3, 4));
+        var status = await GetRustyKioskInstallationStatusAsync(serial, cancellationToken).ConfigureAwait(false);
+        if (!status.SetupHelperReady || !status.SameSignerControlGranted || !status.HostOperatorAvailable)
+        {
+            throw new InvalidOperationException(
+                "Rusty Kiosk installed, but its helper grant, same-signer control, or typed host operator did not verify.");
+        }
+
+        progress?.Report(new OperatorProgress("kiosk-ready", "Rusty Kiosk is installed and provisioned.", 4, 4));
+        return new RustyKioskInstallResult(
+            bundle,
+            helperInstall,
+            settingsGrant,
+            mainInstall,
+            status.SetupHelperReady,
+            status.SameSignerControlGranted);
+    }
+
+    public async Task<RustyKioskProvisionResult> ProvisionRustyKioskAsync(
+        string serial,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var before = await GetRustyKioskInstallationStatusAsync(serial, cancellationToken).ConfigureAwait(false);
+        if (!before.SetupHelperInstalled || !before.MainInstalled)
+        {
+            throw new InvalidOperationException("Install both Rusty Kiosk APKs before provisioning the setup helper.");
+        }
+
+        var grant = await RunForDeviceAsync(
+            serial,
+            [
+                "shell", "pm", "grant",
+                RustyKioskContract.SetupHelperPackage,
+                RustyKioskContract.WriteSecureSettingsPermission
+            ],
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        grant.EnsureSuccess("Provision Rusty Kiosk Setup");
+        var status = await GetRustyKioskInstallationStatusAsync(serial, cancellationToken).ConfigureAwait(false);
+        if (!status.SetupHelperReady || !status.SameSignerControlGranted)
+        {
+            throw new InvalidOperationException("Rusty Kiosk Setup authority did not read back as ready.");
+        }
+
+        return new RustyKioskProvisionResult(
+            grant,
+            status.SetupHelperReady,
+            status.SameSignerControlGranted,
+            status);
+    }
+
+    public async Task<RustyKioskOperatorResult> InvokeRustyKioskAsync(
+        string serial,
+        RustyKioskCommand command,
+        string? value = null,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        value = value?.Trim();
+        if (command.RequiresValue() && string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{command.ToWireName()} requires a value.", nameof(value));
+        }
+
+        if (!command.AllowsValue() && !string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{command.ToWireName()} does not accept a value.", nameof(value));
+        }
+
+        if ((value?.Length ?? 0) > 160)
+        {
+            throw new ArgumentException("Rusty Kiosk operator values may not exceed 160 characters.", nameof(value));
+        }
+
+        var requestId = "pc-" + Guid.NewGuid().ToString("N");
+        var invokeArguments = new List<string>
+        {
+            "shell", "content", "call",
+            "--uri", RustyKioskContract.OperatorUri,
+            "--method", "invoke",
+            "--arg", command.ToWireName(),
+            "--extra", $"request_id:s:{requestId}"
+        };
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            invokeArguments.Add("--extra");
+            invokeArguments.Add(
+                "value_base64:s:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value)));
+        }
+
+        var invoke = await RunForDeviceAsync(
+            serial,
+            invokeArguments,
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        invoke.EnsureSuccess($"Admit Rusty Kiosk {command.ToWireName()}");
+        if (BundleBoolean(invoke.StandardOutput, "accepted") != true)
+        {
+            throw new InvalidOperationException(
+                BundleValue(invoke.StandardOutput, "message") ??
+                "Rusty Kiosk rejected the typed host request.");
+        }
+
+        var launch = await RunForDeviceAsync(
+            serial,
+            [
+                "shell", "am", "start", "-W",
+                "-n", RustyKioskContract.MainPackage + "/" + RustyKioskContract.MainActivity,
+                "--es", RustyKioskContract.PendingRequestExtra, requestId
+            ],
+            ConnectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        launch.EnsureSuccess("Open Rusty Kiosk for typed host execution");
+        if (launch.CondensedOutput.Contains("Error:", StringComparison.OrdinalIgnoreCase) ||
+            launch.CondensedOutput.Contains("Permission Denial", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Rusty Kiosk could not execute the admitted request: {launch.CondensedOutput}");
+        }
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await RunForDeviceAsync(
+                serial,
+                [
+                    "shell", "content", "call",
+                    "--uri", RustyKioskContract.OperatorUri,
+                    "--method", "result",
+                    "--arg", requestId
+                ],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false);
+            result.EnsureSuccess($"Read Rusty Kiosk {command.ToWireName()} result");
+            if (BundleBoolean(result.StandardOutput, "completed") == true)
+            {
+                var encoded = BundleValue(result.StandardOutput, "result_base64")
+                    ?? throw new InvalidDataException("Rusty Kiosk completed without a structured result.");
+                var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                var parsed = RustyKioskOperatorResult.Parse(json);
+                if (!string.Equals(parsed.RequestId, requestId, StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException("Rusty Kiosk returned a mismatched request id.");
+                }
+
+                return parsed;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Rusty Kiosk {command.ToWireName()} did not return a matching result within 15 seconds.");
+    }
+
+    public async Task<CommandResult> PullRustyKioskTagFileAsync(
+        string serial,
+        string localPath,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        ArgumentException.ThrowIfNullOrWhiteSpace(localPath);
+        var fullLocalPath = Path.GetFullPath(localPath);
+        var parent = Path.GetDirectoryName(fullLocalPath);
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            Directory.CreateDirectory(parent);
+        }
+
+        using var output = new MemoryStream();
+        int? expectedBytes = null;
+        string? expectedSha = null;
+        CommandResult? lastResult = null;
+        while (expectedBytes is null || output.Length < expectedBytes.Value)
+        {
+            var offset = checked((int)output.Length);
+            lastResult = await CallRustyKioskProviderAsync(
+                serial,
+                "tag-read",
+                [$"offset:i:{offset}"],
+                cancellationToken).ConfigureAwait(false);
+            EnsureAcceptedProviderResult(lastResult, "Read Rusty Kiosk tag file");
+            var total = BundleInteger(lastResult.StandardOutput, "total_bytes") ??
+                throw new InvalidDataException("Rusty Kiosk tag readback omitted its total byte count.");
+            var sha = BundleValue(lastResult.StandardOutput, "sha256") ??
+                throw new InvalidDataException("Rusty Kiosk tag readback omitted its SHA-256.");
+            expectedBytes ??= total;
+            expectedSha ??= sha;
+            if (total != expectedBytes ||
+                !string.Equals(sha, expectedSha, StringComparison.OrdinalIgnoreCase) ||
+                total is < 1 or > RustyKioskContract.MaxTagFileBytes)
+            {
+                throw new InvalidDataException("Rusty Kiosk tag file changed during the bounded export.");
+            }
+
+            var encoded = BundleValue(lastResult.StandardOutput, "data_base64") ?? string.Empty;
+            var chunk = Convert.FromBase64String(encoded);
+            if (chunk.Length == 0 || output.Length + chunk.Length > expectedBytes)
+            {
+                throw new InvalidDataException("Rusty Kiosk returned an invalid tag-file chunk.");
+            }
+
+            await output.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
+        }
+
+        var bytes = output.ToArray();
+        var actualSha = Convert.ToHexString(SHA256.HashData(bytes));
+        if (!string.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Rusty Kiosk tag-file SHA-256 readback did not match its bytes.");
+        }
+
+        var temporaryPath = fullLocalPath + ".incoming";
+        await File.WriteAllBytesAsync(temporaryPath, bytes, cancellationToken).ConfigureAwait(false);
+        RustyKioskTagFile.ValidateAndRead(temporaryPath);
+        File.Move(temporaryPath, fullLocalPath, overwrite: true);
+        return lastResult ?? throw new InvalidDataException("Rusty Kiosk returned no tag-file chunks.");
+    }
+
+    public async Task<CommandResult> PushRustyKioskTagFileAsync(
+        string serial,
+        string localPath,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var json = RustyKioskTagFile.ValidateAndRead(localPath);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        var transferId = "pc-" + Guid.NewGuid().ToString("N");
+        var common = new[]
+        {
+            $"transfer_id:s:{transferId}",
+            $"total_bytes:i:{bytes.Length}",
+            $"sha256:s:{sha}"
+        };
+        var begin = await CallRustyKioskProviderAsync(
+            serial,
+            "tag-write-begin",
+            common,
+            cancellationToken).ConfigureAwait(false);
+        EnsureAcceptedProviderResult(begin, "Begin Rusty Kiosk tag transfer");
+
+        const int chunkBytes = 6 * 1024;
+        for (var offset = 0; offset < bytes.Length; offset += chunkBytes)
+        {
+            var length = Math.Min(chunkBytes, bytes.Length - offset);
+            var encoded = Convert.ToBase64String(bytes, offset, length);
+            var chunk = await CallRustyKioskProviderAsync(
+                serial,
+                "tag-write-chunk",
+                [
+                    $"transfer_id:s:{transferId}",
+                    $"offset:i:{offset}",
+                    $"data_base64:s:{encoded}"
+                ],
+                cancellationToken).ConfigureAwait(false);
+            EnsureAcceptedProviderResult(chunk, "Transfer Rusty Kiosk tag chunk");
+            if (BundleInteger(chunk.StandardOutput, "offset") != offset + length)
+            {
+                throw new InvalidDataException("Rusty Kiosk did not acknowledge the complete ordered tag chunk.");
+            }
+        }
+
+        var commit = await CallRustyKioskProviderAsync(
+            serial,
+            "tag-write-commit",
+            common,
+            cancellationToken).ConfigureAwait(false);
+        EnsureAcceptedProviderResult(commit, "Commit Rusty Kiosk tag file");
+        return commit;
+    }
+
+    public async Task<QuestControlStatus> GetQuestControlStatusAsync(
+        string serial,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        var batteryTask = RunForDeviceAsync(serial, ["shell", "dumpsys", "battery"], InspectionTimeout, cancellationToken);
+        var trackingTask = RunForDeviceAsync(serial, ["shell", "dumpsys", "tracking"], InspectionTimeout, cancellationToken);
+        var powerTask = RunForDeviceAsync(serial, ["shell", "dumpsys", "power"], InspectionTimeout, cancellationToken);
+        var proximityTask = RunForDeviceAsync(serial, ["shell", "dumpsys", "vrpowermanager"], InspectionTimeout, cancellationToken);
+        var cpuTask = RunForDeviceAsync(serial, ["shell", "getprop", "debug.oculus.cpuLevel"], InspectionTimeout, cancellationToken);
+        var gpuTask = RunForDeviceAsync(serial, ["shell", "getprop", "debug.oculus.gpuLevel"], InspectionTimeout, cancellationToken);
+        await Task.WhenAll(batteryTask, trackingTask, powerTask, proximityTask, cpuTask, gpuTask).ConfigureAwait(false);
+        var battery = await batteryTask.ConfigureAwait(false);
+        var tracking = await trackingTask.ConfigureAwait(false);
+        var power = await powerTask.ConfigureAwait(false);
+        var proximity = await proximityTask.ConfigureAwait(false);
+        var cpu = await cpuTask.ConfigureAwait(false);
+        var gpu = await gpuTask.ConfigureAwait(false);
+        battery.EnsureSuccess("Read headset battery");
+        power.EnsureSuccess("Read headset power state");
+        return QuestControlParser.Parse(
+            battery.StandardOutput,
+            tracking.Succeeded ? tracking.StandardOutput : string.Empty,
+            power.StandardOutput,
+            proximity.Succeeded ? proximity.StandardOutput : string.Empty,
+            cpu.Succeeded ? cpu.StandardOutput : string.Empty,
+            gpu.Succeeded ? gpu.StandardOutput : string.Empty,
+            DateTimeOffset.Now);
+    }
+
+    public async Task<QuestKeepAwakeResult> SetQuestKeepAwakeAsync(
+        string serial,
+        bool enabled,
+        int durationMilliseconds = 28_800_000,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        if (durationMilliseconds is < 60_000 or > 86_400_000)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationMilliseconds),
+                "Keep-awake duration must be between one minute and 24 hours.");
+        }
+
+        var commands = new List<CommandResult>();
+        if (enabled)
+        {
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                ["shell", "svc", "power", "stayon", "true"],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess("Enable Quest stay-awake"));
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                ["shell", "input", "keyevent", "KEYCODE_WAKEUP"],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess("Wake Quest display"));
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                [
+                    "shell", "am", "broadcast",
+                    "-a", "com.oculus.vrpowermanager.prox_close",
+                    "--ei", "duration", durationMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess("Enable Quest proximity hold"));
+        }
+        else
+        {
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                ["shell", "am", "broadcast", "-a", "com.oculus.vrpowermanager.automation_disable"],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess("Restore normal Quest proximity"));
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                ["shell", "svc", "power", "stayon", "false"],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess("Restore normal Quest stay-awake policy"));
+        }
+
+        var status = await GetQuestControlStatusAsync(serial, cancellationToken).ConfigureAwait(false);
+        return new QuestKeepAwakeResult(enabled, commands, status);
+    }
+
+    public async Task<QuestPerformanceResult> SetQuestPerformanceLevelsAsync(
+        string serial,
+        int? cpuLevel,
+        int? gpuLevel,
+        bool clear,
+        CancellationToken cancellationToken = default)
+    {
+        serial = AndroidInput.RequireSerial(serial);
+        if (!clear && cpuLevel is null && gpuLevel is null)
+        {
+            throw new ArgumentException("Choose at least one CPU or GPU level, or clear both overrides.");
+        }
+
+        ValidatePerformanceLevel(cpuLevel, nameof(cpuLevel));
+        ValidatePerformanceLevel(gpuLevel, nameof(gpuLevel));
+        var commands = new List<CommandResult>();
+        if (clear || cpuLevel is not null)
+        {
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                clear
+                    ? ["shell", "setprop debug.oculus.cpuLevel ''"]
+                    : ["shell", "setprop", "debug.oculus.cpuLevel", cpuLevel!.Value.ToString()],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess(clear ? "Clear Quest CPU override" : "Set Quest CPU level"));
+        }
+
+        if (clear || gpuLevel is not null)
+        {
+            commands.Add((await RunForDeviceAsync(
+                serial,
+                clear
+                    ? ["shell", "setprop debug.oculus.gpuLevel ''"]
+                    : ["shell", "setprop", "debug.oculus.gpuLevel", gpuLevel!.Value.ToString()],
+                InspectionTimeout,
+                cancellationToken).ConfigureAwait(false)).EnsureSuccess(clear ? "Clear Quest GPU override" : "Set Quest GPU level"));
+        }
+
+        var status = await GetQuestControlStatusAsync(serial, cancellationToken).ConfigureAwait(false);
+        return new QuestPerformanceResult(cpuLevel, gpuLevel, clear, commands, status);
+    }
+
+    private async Task<CommandResult> GetPackageDumpAsync(
+        string serial,
+        string packageName,
+        CancellationToken cancellationToken) =>
+        await RunForDeviceAsync(
+            serial,
+            ["shell", "dumpsys", "package", packageName],
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task VerifyRemoteFileSizeAsync(
+        string serial,
+        string remotePath,
+        long expectedBytes,
+        CancellationToken cancellationToken)
+    {
+        var verify = await RunForDeviceAsync(
+            serial,
+            ["shell", $"stat -c %s -- {AndroidInput.ShellQuote(remotePath)}"],
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+        verify.EnsureSuccess($"Verify {remotePath}");
+        if (!long.TryParse(
+                verify.StandardOutput.Trim(),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var actualBytes) ||
+            actualBytes != expectedBytes)
+        {
+            throw new InvalidDataException(
+                $"The headset reported {actualBytes} bytes at {remotePath}; expected {expectedBytes} bytes.");
+        }
+    }
+
+    private async Task<CommandResult> CallRustyKioskProviderAsync(
+        string serial,
+        string method,
+        IReadOnlyList<string> typedExtras,
+        CancellationToken cancellationToken)
+    {
+        var arguments = new List<string>
+        {
+            "shell", "content", "call",
+            "--uri", RustyKioskContract.OperatorUri,
+            "--method", method
+        };
+        foreach (var extra in typedExtras)
+        {
+            arguments.Add("--extra");
+            arguments.Add(extra);
+        }
+
+        return await RunForDeviceAsync(
+            serial,
+            arguments,
+            InspectionTimeout,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void EnsureAcceptedProviderResult(CommandResult result, string operation)
+    {
+        result.EnsureSuccess(operation);
+        if (BundleBoolean(result.StandardOutput, "accepted") != true)
+        {
+            throw new InvalidOperationException(
+                BundleValue(result.StandardOutput, "message") ?? $"{operation} was rejected.");
+        }
+    }
+
+    private static bool HasGrantedPermission(string packageDump, string permission) =>
+        Regex.IsMatch(
+            packageDump,
+            $@"(?m)^\s*{Regex.Escape(permission)}:\s+granted=true\s*$",
+            RegexOptions.CultureInvariant);
+
+    private static string? ParsePackageVersion(string packageDump)
+    {
+        var match = Regex.Match(packageDump, @"(?m)^\s*versionName=(?<value>\S+)\s*$", RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["value"].Value : null;
+    }
+
+    private static string? BundleValue(string output, string key)
+    {
+        var match = Regex.Match(
+            output,
+            $@"(?:^|[{{,]\s*){Regex.Escape(key)}=(?<value>.*?)(?=,\s*[A-Za-z0-9_]+=|}}\]|}}$)",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["value"].Value.Trim() : null;
+    }
+
+    private static bool? BundleBoolean(string output, string key) =>
+        bool.TryParse(BundleValue(output, key), out var value) ? value : null;
+
+    private static int? BundleInteger(string output, string key) =>
+        int.TryParse(
+            BundleValue(output, key),
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value)
+                ? value
+                : null;
+
+    private static void ValidatePerformanceLevel(int? value, string parameterName)
+    {
+        if (value is < 0 or > 5)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, "Quest CPU/GPU level must be between 0 and 5.");
+        }
+    }
+
+    private Task<CommandResult> RunForDeviceAsync(
+        string serial,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var scoped = new List<string> { "-s", AndroidInput.RequireSerial(serial) };
+        scoped.AddRange(arguments);
+        return RunAsync(scoped, timeout, cancellationToken);
+    }
+
+    private static List<string> CreateInstallArguments(
+        string installCommand,
+        ApkInstallOptions? options)
+    {
+        options ??= new ApkInstallOptions();
+        var arguments = new List<string> { installCommand };
+        if (options.ReplaceExisting)
+        {
+            arguments.Add("-r");
+        }
+
+        if (options.AllowDowngrade)
+        {
+            arguments.Add("-d");
+        }
+
+        if (options.GrantRuntimePermissions)
+        {
+            arguments.Add("-g");
+        }
+
+        if (options.AllowTestPackages)
+        {
+            arguments.Add("-t");
+        }
+
+        return arguments;
+    }
+
+    private static string ValidateInstallApkPath(string apkPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apkPath);
+        var fullApkPath = Path.GetFullPath(apkPath);
+        if (!File.Exists(fullApkPath))
+        {
+            throw new FileNotFoundException("An APK bundle part was not found.", fullApkPath);
+        }
+
+        if (!string.Equals(Path.GetExtension(fullApkPath), ".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"Every APK bundle input must end in .apk: {fullApkPath}",
+                nameof(apkPath));
+        }
+
+        return fullApkPath;
+    }
+
+    private static IReadOnlyList<string> ValidateWifiInstallTargets(IReadOnlyList<string> serials)
+    {
+        ArgumentNullException.ThrowIfNull(serials);
+        if (serials.Count < 2)
+        {
+            throw new ArgumentException(
+                "Parallel installation requires at least two Wi-Fi ADB targets.",
+                nameof(serials));
+        }
+
+        var targets = serials.Select(AndroidInput.RequireWifiSerial).ToArray();
+        if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
+        {
+            throw new ArgumentException(
+                "Each Wi-Fi ADB target may appear only once.",
+                nameof(serials));
+        }
+
+        return targets;
+    }
+
+    private async Task<ParallelApkInstallResult> InstallOnManyWifiDevicesAsync(
+        IReadOnlyList<string> serials,
+        IReadOnlyList<string> apkPaths,
+        IReadOnlyList<string> installArguments,
+        int maxParallelism,
+        CancellationToken cancellationToken,
+        IProgress<OperatorProgress>? progress)
+    {
+        maxParallelism = AndroidInput.RequireParallelism(maxParallelism);
+        progress?.Report(new OperatorProgress(
+            "parallel-install",
+            $"Starting installation on {serials.Count} headsets…",
+            0,
+            serials.Count));
+        using var gate = new SemaphoreSlim(Math.Min(maxParallelism, serials.Count));
+        var progressGate = new object();
+        var completedCount = 0;
+        var tasks = serials.Select(InstallOneAsync).ToArray();
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return new ParallelApkInstallResult(apkPaths.ToArray(), maxParallelism, results);
+
+        async Task<TargetApkInstallResult> InstallOneAsync(string serial)
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            TargetApkInstallResult targetResult;
+            try
+            {
+                var result = await RunForDeviceAsync(
+                    serial,
+                    installArguments,
+                    TransferTimeout,
+                    cancellationToken).ConfigureAwait(false);
+                if (result.Succeeded)
+                {
+                    await GetThirdPartyPackageNamesAsync(serial, cancellationToken).ConfigureAwait(false);
+                }
+
+                targetResult = new TargetApkInstallResult(
+                    serial,
+                    result,
+                    result.Succeeded ? null : result.CondensedOutput);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                targetResult = new TargetApkInstallResult(serial, null, exception.Message);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            lock (progressGate)
+            {
+                completedCount++;
+                progress?.Report(new OperatorProgress(
+                    "parallel-install",
+                    $"Finished {completedCount} of {serials.Count} headset installs…",
+                    completedCount,
+                    serials.Count));
+            }
+            return targetResult;
+        }
+    }
+
+    private Task<CommandResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        _runner.RunAsync(AdbPath, arguments, timeout, cancellationToken);
+
+    private static async Task<string> ComputeSha256Async(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 1024 * 128,
+            useAsync: true);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+        return Convert.ToHexString(hash);
+    }
+}

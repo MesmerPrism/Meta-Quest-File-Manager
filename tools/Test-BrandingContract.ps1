@@ -1,0 +1,67 @@
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+
+function Assert-Contains {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    $content = Get-Content -LiteralPath (Join-Path $repoRoot $Path) -Raw
+    if (-not $content.Contains($Value, [StringComparison]::Ordinal)) {
+        throw "$Path does not contain the required branding contract: $Value"
+    }
+}
+
+$trackedFormerPaths = @(
+    & git -C $repoRoot ls-files |
+        Where-Object { $_ -match 'Meta-Quest-File-Manager|MetaQuestFileManager|meta-quest-file-manager' }
+)
+if ($trackedFormerPaths.Count -gt 0) {
+    throw "Former-name tracked paths remain:`n$($trackedFormerPaths -join "`n")"
+}
+
+foreach ($path in @(
+    'QuestIonAbleFileManager.slnx',
+    'src\QuestIonAbleFileManager.App\QuestIonAbleFileManager.App.csproj',
+    'src\QuestIonAbleFileManager.Cli\QuestIonAbleFileManager.Cli.csproj',
+    'src\QuestIonAbleFileManager.Core\QuestIonAbleFileManager.Core.csproj',
+    'src\QuestIonAbleFileManager.Setup\QuestIonAbleFileManager.Setup.csproj'
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $path) -PathType Leaf)) {
+        throw "Canonical project path is missing: $path"
+    }
+}
+
+Assert-Contains 'README.md' '# QuestIonAble File Manager'
+Assert-Contains 'site\index.html' '<title>QuestIonAble File Manager · Mesmer Prism</title>'
+Assert-Contains 'site\index.html' 'https://mesmerprism.com/QuestIonAble-File-Manager/'
+Assert-Contains 'src\QuestIonAbleFileManager.Cli\QuestIonAbleFileManager.Cli.csproj' '<AssemblyName>questionable-file-manager</AssemblyName>'
+Assert-Contains 'src\QuestIonAbleFileManager.Core\AdbLocator.cs' 'QUESTIONABLE_FILE_MANAGER_ADB'
+
+# This signed identity is intentionally the sole former product identifier
+# required for in-place updates from 0.3.x.
+Assert-Contains 'src\QuestIonAbleFileManager.App.Package\Package.appxmanifest' 'Name="MesmerPrism.MetaQuestFileManager"'
+Assert-Contains 'src\QuestIonAbleFileManager.App.Package\Package.appxmanifest' '<DisplayName>QuestIonAble File Manager</DisplayName>'
+Assert-Contains 'tools\app\Invoke-ReleaseBuild.ps1' "'MetaQuestFileManager.appinstaller' = 'QuestIonAbleFileManager.appinstaller'"
+Assert-Contains 'tools\app\Invoke-ReleaseBuild.ps1' "'meta-quest-file-manager-cli-win-x64.zip' = 'questionable-file-manager-cli-win-x64.zip'"
+
+$currentSurfaces = @(
+    'site\index.html',
+    'site\site.webmanifest',
+    'src\QuestIonAbleFileManager.App\MainWindow.xaml',
+    'src\QuestIonAbleFileManager.App\MainWindow.xaml.cs',
+    'src\QuestIonAbleFileManager.Cli\Program.cs',
+    'src\QuestIonAbleFileManager.Setup\Program.cs'
+)
+foreach ($relativePath in $currentSurfaces) {
+    $content = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw
+    if ($content -match 'Meta Quest File Manager|Meta-Quest-File-Manager') {
+        throw "Former public branding remains on current surface: $relativePath"
+    }
+}
+
+Write-Output 'QuestIonAble File Manager branding and compatibility contract passed.'

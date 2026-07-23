@@ -68,17 +68,17 @@ Wi-Fi state changes require the confirmation flag after a human operator has
 approved the exact target:
 
 ```powershell
-meta-quest-file-manager.exe wifi enable `
+questionable-file-manager.exe wifi enable `
   --serial <usb-serial> `
   --port 5555 `
   --confirm-wifi-adb
 
-meta-quest-file-manager.exe wifi connect `
+questionable-file-manager.exe wifi connect `
   --host <quest-ip> `
   --port 5555 `
   --confirm-wifi-adb
 
-meta-quest-file-manager.exe wifi disconnect `
+questionable-file-manager.exe wifi disconnect `
   --host <quest-ip> `
   --port 5555 `
   --confirm-wifi-adb
@@ -87,7 +87,7 @@ meta-quest-file-manager.exe wifi disconnect `
 Parallel single-APK installation:
 
 ```powershell
-meta-quest-file-manager.exe apk install-many `
+questionable-file-manager.exe apk install-many `
   --serial <quest-a-ip>:5555 `
   --serial <quest-b-ip>:5555 `
   --file <path-to.apk> `
@@ -98,7 +98,7 @@ meta-quest-file-manager.exe apk install-many `
 Parallel APK-set installation:
 
 ```powershell
-meta-quest-file-manager.exe apk install-bundle-many `
+questionable-file-manager.exe apk install-bundle-many `
   --serial <quest-a-ip>:5555 `
   --serial <quest-b-ip>:5555 `
   --folder <apk-folder> `

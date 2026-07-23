@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>QuestIonAbleFileManager.Setup</AssemblyName>
+    <AssemblyTitle>QuestIonAble File Manager Setup</AssemblyTitle>
+    <Product>QuestIonAble File Manager Setup</Product>
+    <Description>Guided installer and updater for QuestIonAble File Manager.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\branding\QuestIonAbleFileManager.ico</ApplicationIcon>
+  </PropertyGroup>
+</Project>

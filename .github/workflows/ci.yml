@@ -21,30 +21,34 @@ jobs:
           dotnet-version: 10.0.201
 
       - name: Restore
-        run: dotnet restore MetaQuestFileManager.slnx
+        run: dotnet restore QuestIonAbleFileManager.slnx
 
       - name: Build
-        run: dotnet build MetaQuestFileManager.slnx --configuration Release --no-restore
+        run: dotnet build QuestIonAbleFileManager.slnx --configuration Release --no-restore
 
       - name: Brand assets
         shell: pwsh
         run: |
           $executables = @(
-            './src/MetaQuestFileManager.App/bin/Release/net10.0-windows10.0.19041.0/MetaQuestFileManager.exe'
-            './src/MetaQuestFileManager.Cli/bin/Release/net10.0/meta-quest-file-manager.exe'
-            './src/MetaQuestFileManager.Setup/bin/Release/net10.0-windows10.0.19041.0/MetaQuestFileManager.Setup.exe'
+            './src/QuestIonAbleFileManager.App/bin/Release/net10.0-windows10.0.19041.0/QuestIonAbleFileManager.exe'
+            './src/QuestIonAbleFileManager.Cli/bin/Release/net10.0/questionable-file-manager.exe'
+            './src/QuestIonAbleFileManager.Setup/bin/Release/net10.0-windows10.0.19041.0/QuestIonAbleFileManager.Setup.exe'
           )
           ./tools/app/Test-BrandAssets.ps1 -Executable $executables
 
       - name: Test
-        run: dotnet test MetaQuestFileManager.slnx --configuration Release --no-build
+        run: dotnet test QuestIonAbleFileManager.slnx --configuration Release --no-build
 
       - name: CLI smoke
-        run: dotnet run --project src/MetaQuestFileManager.Cli --configuration Release --no-build -- --help
+        run: dotnet run --project src/QuestIonAbleFileManager.Cli --configuration Release --no-build -- --help
 
       - name: Public boundary
         shell: pwsh
         run: pwsh -NoProfile -File ./tools/Test-PublicBoundary.ps1
+
+      - name: Branding and compatibility contract
+        shell: pwsh
+        run: pwsh -NoProfile -File ./tools/Test-BrandingContract.ps1
 
       - name: Kiosk release-bundle verifier
         shell: pwsh

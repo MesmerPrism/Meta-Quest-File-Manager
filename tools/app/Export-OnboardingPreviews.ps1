@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$project = Join-Path $PSScriptRoot 'OnboardingPreview\MetaQuestFileManager.OnboardingPreview.csproj'
+$project = Join-Path $PSScriptRoot 'OnboardingPreview\QuestIonAbleFileManager.OnboardingPreview.csproj'
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 

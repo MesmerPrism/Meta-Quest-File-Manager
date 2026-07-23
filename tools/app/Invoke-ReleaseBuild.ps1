@@ -75,11 +75,11 @@ if (Test-Path -LiteralPath $OutputDirectory) {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
 if (-not $SkipBuildAndTest) {
-    & dotnet restore (Join-Path $repoRoot 'MetaQuestFileManager.slnx')
+    & dotnet restore (Join-Path $repoRoot 'QuestIonAbleFileManager.slnx')
     if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed.' }
-    & dotnet build (Join-Path $repoRoot 'MetaQuestFileManager.slnx') --configuration Release --no-restore -p:Version=$Version
+    & dotnet build (Join-Path $repoRoot 'QuestIonAbleFileManager.slnx') --configuration Release --no-restore -p:Version=$Version
     if ($LASTEXITCODE -ne 0) { throw 'dotnet build failed.' }
-    & dotnet test (Join-Path $repoRoot 'MetaQuestFileManager.slnx') --configuration Release --no-build
+    & dotnet test (Join-Path $repoRoot 'QuestIonAbleFileManager.slnx') --configuration Release --no-build
     if ($LASTEXITCODE -ne 0) { throw 'dotnet test failed.' }
     & pwsh -NoProfile -File (Join-Path $repoRoot 'tools\Test-PublicBoundary.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Public-boundary validation failed.' }
@@ -93,19 +93,23 @@ foreach ($directory in @($appPublish, $cliPublish, $combined)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
 
-& dotnet publish (Join-Path $repoRoot 'src\MetaQuestFileManager.App\MetaQuestFileManager.App.csproj') `
+& dotnet publish (Join-Path $repoRoot 'src\QuestIonAbleFileManager.App\QuestIonAbleFileManager.App.csproj') `
     --configuration Release --runtime win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:Version=$Version --output $appPublish
 if ($LASTEXITCODE -ne 0) { throw 'Portable app publish failed.' }
-& dotnet publish (Join-Path $repoRoot 'src\MetaQuestFileManager.Cli\MetaQuestFileManager.Cli.csproj') `
+& dotnet publish (Join-Path $repoRoot 'src\QuestIonAbleFileManager.Cli\QuestIonAbleFileManager.Cli.csproj') `
     --configuration Release --runtime win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:Version=$Version --output $cliPublish
 if ($LASTEXITCODE -ne 0) { throw 'Portable CLI publish failed.' }
 
+# Keep the former executable name as a migration alias for existing scripts.
+Copy-Item -LiteralPath (Join-Path $cliPublish 'questionable-file-manager.exe') `
+    -Destination (Join-Path $cliPublish 'meta-quest-file-manager.exe') -Force
 Copy-Item -Path (Join-Path $appPublish '*') -Destination $combined -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $cliPublish 'questionable-file-manager.exe') -Destination $combined -Force
 Copy-Item -LiteralPath (Join-Path $cliPublish 'meta-quest-file-manager.exe') -Destination $combined -Force
-Compress-Archive -Path (Join-Path $combined '*') -DestinationPath (Join-Path $OutputDirectory 'MetaQuestFileManager-win-x64.zip')
-Compress-Archive -Path (Join-Path $cliPublish '*') -DestinationPath (Join-Path $OutputDirectory 'meta-quest-file-manager-cli-win-x64.zip')
+Compress-Archive -Path (Join-Path $combined '*') -DestinationPath (Join-Path $OutputDirectory 'QuestIonAbleFileManager-win-x64.zip')
+Compress-Archive -Path (Join-Path $cliPublish '*') -DestinationPath (Join-Path $OutputDirectory 'questionable-file-manager-cli-win-x64.zip')
 
 & (Join-Path $PSScriptRoot 'Build-App-Package.ps1') `
     -Version $Version `
@@ -124,10 +128,25 @@ if ($LASTEXITCODE -ne 0) { throw 'MSIX package build failed.' }
     -TimestampUrl $SetupTimestampUrl
 if ($LASTEXITCODE -ne 0) { throw 'Guided setup publish failed.' }
 
+# Releases keep byte-identical former-name aliases so 0.3.x App Installer
+# subscriptions and pinned automation download URLs migrate without breaking.
+$compatibilityAliases = [ordered]@{
+    'MetaQuestFileManager-Setup.exe' = 'QuestIonAbleFileManager-Setup.exe'
+    'MetaQuestFileManager-win-x64.msix' = 'QuestIonAbleFileManager-win-x64.msix'
+    'MetaQuestFileManager.appinstaller' = 'QuestIonAbleFileManager.appinstaller'
+    'MetaQuestFileManager.cer' = 'QuestIonAbleFileManager.cer'
+    'MetaQuestFileManager-win-x64.zip' = 'QuestIonAbleFileManager-win-x64.zip'
+    'meta-quest-file-manager-cli-win-x64.zip' = 'questionable-file-manager-cli-win-x64.zip'
+}
+foreach ($entry in $compatibilityAliases.GetEnumerator()) {
+    Copy-Item -LiteralPath (Join-Path $OutputDirectory $entry.Value) `
+        -Destination (Join-Path $OutputDirectory $entry.Key) -Force
+}
+
 & (Join-Path $PSScriptRoot 'Test-BrandAssets.ps1') -Executable @(
-    (Join-Path $appPublish 'MetaQuestFileManager.exe'),
-    (Join-Path $cliPublish 'meta-quest-file-manager.exe'),
-    (Join-Path $OutputDirectory 'MetaQuestFileManager-Setup.exe')
+    (Join-Path $appPublish 'QuestIonAbleFileManager.exe'),
+    (Join-Path $cliPublish 'questionable-file-manager.exe'),
+    (Join-Path $OutputDirectory 'QuestIonAbleFileManager-Setup.exe')
 )
 if ($LASTEXITCODE -ne 0) { throw 'Brand asset validation failed.' }
 

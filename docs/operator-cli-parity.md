@@ -10,8 +10,8 @@ not projected into the non-technical WPF interface.
 The Windows release places these programs beside each other:
 
 ```text
-MetaQuestFileManager.exe
-meta-quest-file-manager.exe
+QuestIonAbleFileManager.exe
+questionable-file-manager.exe
 ```
 
 The CLI can be invoked directly in PowerShell without translating GUI labels
@@ -52,28 +52,28 @@ exact tool selection is part of the test.
 Example shapes use placeholders rather than live device or local identities:
 
 ```powershell
-& '.\meta-quest-file-manager.exe' files list --serial <quest-serial> --path /sdcard --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' files pull --serial <quest-serial> --remote /sdcard/Download/example.txt --output <local-path> --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' files push --serial <quest-serial> --file <local-path> --remote /sdcard/Download/example.txt --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk list --serial <quest-serial> --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk export --serial <quest-serial> --package <package> --output <local-apk> --overwrite --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk install --serial <quest-serial> --file <local-apk> --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk install-bundle --serial <quest-serial> --folder <apk-folder> --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' kiosk status --serial <quest-serial> --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' kiosk install --serial <usb-serial> --confirm-kiosk-setup --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' kiosk command --serial <quest-serial> --command launch-kiosk --confirm-kiosk-control --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <code> --json
-& '.\meta-quest-file-manager.exe' kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
-& '.\meta-quest-file-manager.exe' kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <local-file> --json
-& '.\meta-quest-file-manager.exe' kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <base-apk> --confirm-local-install --json
-& '.\meta-quest-file-manager.exe' device keep-awake --serial <quest-serial> --on --confirm-device-settings --json --adb <path-to-adb>
-& '.\meta-quest-file-manager.exe' device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' files list --serial <quest-serial> --path /sdcard --adb <path-to-adb>
+& '.\questionable-file-manager.exe' files pull --serial <quest-serial> --remote /sdcard/Download/example.txt --output <local-path> --adb <path-to-adb>
+& '.\questionable-file-manager.exe' files push --serial <quest-serial> --file <local-path> --remote /sdcard/Download/example.txt --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk list --serial <quest-serial> --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk export --serial <quest-serial> --package <package> --output <local-apk> --overwrite --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk install --serial <quest-serial> --file <local-apk> --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk install-bundle --serial <quest-serial> --folder <apk-folder> --adb <path-to-adb>
+& '.\questionable-file-manager.exe' wifi enable --serial <usb-serial> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\questionable-file-manager.exe' wifi connect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\questionable-file-manager.exe' wifi disconnect --host <quest-ip> --port 5555 --confirm-wifi-adb --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk install-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --file <local-apk> --parallelism 2 --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' apk install-bundle-many --serial <quest-a-ip>:5555 --serial <quest-b-ip>:5555 --folder <apk-folder> --parallelism 2 --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' kiosk status --serial <quest-serial> --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' kiosk install --serial <usb-serial> --confirm-kiosk-setup --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' kiosk command --serial <quest-serial> --command launch-kiosk --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' kiosk tags import --serial <quest-serial> --file <tag-file> --confirm-kiosk-control --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' kiosk-direct status --endpoint http://<quest-ip>:39873 --pairing-code <code> --json
+& '.\questionable-file-manager.exe' kiosk-direct command --endpoint http://<quest-ip>:39873 --pairing-code <code> --command launch-kiosk --confirm-kiosk-control --json
+& '.\questionable-file-manager.exe' kiosk-direct files upload --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <local-file> --json
+& '.\questionable-file-manager.exe' kiosk-direct install --endpoint http://<quest-ip>:39873 --pairing-code <code> --file <base-apk> --confirm-local-install --json
+& '.\questionable-file-manager.exe' device keep-awake --serial <quest-serial> --on --confirm-device-settings --json --adb <path-to-adb>
+& '.\questionable-file-manager.exe' device performance --serial <quest-serial> --cpu 3 --gpu 3 --confirm-device-settings --json --adb <path-to-adb>
 ```
 
 PowerShell rendering single-quotes paths when required and doubles embedded

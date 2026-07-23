@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+  <!-- Keep this identity stable so signed 0.3.x installations can update in place. -->
+  <Identity
+    Name="MesmerPrism.MetaQuestFileManager"
+    Publisher="CN=MesmerPrism"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>QuestIonAble File Manager</DisplayName>
+    <PublisherDisplayName>Mesmer Prism</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="QuestIonAble File Manager"
+        Description="File and APK transfer for ADB-authorized Meta Quest headsets"
+        BackgroundColor="#F3F1EC"
+        Square44x44Logo="Images\Square44x44Logo.png"
+        Square150x150Logo="Images\Square150x150Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

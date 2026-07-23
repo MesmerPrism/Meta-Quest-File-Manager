@@ -1,4 +1,7 @@
-# Meta Quest File Manager 0.3.0
+# QuestIonAble File Manager 0.3.0 history
+
+This release was published under the former name **Meta Quest File Manager**.
+The name is retained here only as historical release metadata.
 
 ## Decision
 

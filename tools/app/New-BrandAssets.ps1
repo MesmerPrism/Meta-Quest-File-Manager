@@ -9,7 +9,7 @@ $RepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 Add-Type -AssemblyName System.Drawing.Common
 
 $brandingDirectory = Join-Path $RepositoryRoot 'assets\branding'
-$packageDirectory = Join-Path $RepositoryRoot 'src\MetaQuestFileManager.App.Package\Images'
+$packageDirectory = Join-Path $RepositoryRoot 'src\QuestIonAbleFileManager.App.Package\Images'
 $siteDirectory = Join-Path $RepositoryRoot 'site'
 
 foreach ($directory in @($brandingDirectory, $packageDirectory, $siteDirectory)) {
@@ -166,7 +166,7 @@ $svgPath = Join-Path $brandingDirectory 'folder-icon.svg'
 [IO.File]::WriteAllText((Join-Path $siteDirectory 'folder-icon.svg'), $svg, [Text.UTF8Encoding]::new($false))
 
 Save-FolderPng -Size 512 -Path (Join-Path $brandingDirectory 'folder-icon-512.png')
-Save-FolderIco -Path (Join-Path $brandingDirectory 'MetaQuestFileManager.ico')
+Save-FolderIco -Path (Join-Path $brandingDirectory 'QuestIonAbleFileManager.ico')
 
 Save-FolderPng -Size 44 -Path (Join-Path $packageDirectory 'Square44x44Logo.png')
 Save-FolderPng -Size 150 -Path (Join-Path $packageDirectory 'Square150x150Logo.png')
@@ -178,6 +178,6 @@ Save-FolderPng -Size 512 -Path (Join-Path $siteDirectory 'icon-512.png')
 Save-FolderPng -Size 180 -Path (Join-Path $siteDirectory 'apple-touch-icon.png') -WithBackground
 
 Get-ChildItem -LiteralPath $brandingDirectory, $packageDirectory, $siteDirectory -File |
-    Where-Object { $_.Name -match '^(folder-icon|MetaQuestFileManager|Square|StoreLogo|favicon|icon-|apple-touch)' } |
+    Where-Object { $_.Name -match '^(folder-icon|QuestIonAbleFileManager|Square|StoreLogo|favicon|icon-|apple-touch)' } |
     Sort-Object FullName |
     Select-Object FullName, Length

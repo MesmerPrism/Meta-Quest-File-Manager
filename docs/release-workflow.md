@@ -8,15 +8,21 @@ release does not require new website URLs.
 
 Every Windows preview release contains:
 
-- `MetaQuestFileManager-Setup.exe`: signed guided installer and updater;
-- `MetaQuestFileManager-win-x64.msix`: signed Windows package;
-- `MetaQuestFileManager.appinstaller`: update feed for the stable package
+- `QuestIonAbleFileManager-Setup.exe`: signed guided installer and updater;
+- `QuestIonAbleFileManager-win-x64.msix`: signed Windows package;
+- `QuestIonAbleFileManager.appinstaller`: update feed for the stable package
   identity;
-- `MetaQuestFileManager.cer`: public half of the package signing certificate;
-- `MetaQuestFileManager-win-x64.zip`: portable WPF app plus operator CLI;
-- `meta-quest-file-manager-cli-win-x64.zip`: CLI-only automation archive;
+- `QuestIonAbleFileManager.cer`: public half of the package signing certificate;
+- `QuestIonAbleFileManager-win-x64.zip`: portable WPF app plus operator CLI;
+- `questionable-file-manager-cli-win-x64.zip`: CLI-only automation archive;
 - `SHA256SUMS.txt`: checksums for every release asset;
 - `release-validation.json`: signature, timestamp, identity, and feed receipt.
+
+Releases from `0.4.0` also contain byte-identical former-name aliases for the
+setup, MSIX, App Installer, certificate, portable archive, and CLI archive.
+Those assets are an update bridge for existing `0.3.x` installations and pinned
+automation; they are not the canonical product names. The portable archives
+similarly include the former CLI executable name as a deprecated alias.
 
 Android Platform Tools are not bundled. The app discovers an operator-supplied
 `adb.exe` through the documented search order.
@@ -29,7 +35,7 @@ checks the assets plus embedded EXE resources.
 
 ## Consumer Routes
 
-The recommended route is `MetaQuestFileManager-Setup.exe`. It downloads the
+The recommended route is `QuestIonAbleFileManager-Setup.exe`. It downloads the
 public certificate and App Installer feed from the latest GitHub release,
 requests Windows administrator approval, trusts the certificate in Local
 Machine `TrustedPeople`, installs or updates the stable package identity, and
@@ -38,8 +44,8 @@ launches the app.
 For machines that block the self-issued helper executable, the manual fallback
 is deliberately kept public:
 
-1. download `MetaQuestFileManager.cer` and trust it in **Trusted People**;
-2. download and open `MetaQuestFileManager.appinstaller`;
+1. download `QuestIonAbleFileManager.cer` and trust it in **Trusted People**;
+2. download and open `QuestIonAbleFileManager.appinstaller`;
 3. if App Installer is unavailable, download and open the signed MSIX;
 4. use the portable ZIP when package installation is restricted.
 
@@ -77,7 +83,8 @@ larger bounded window.
 
 The release build preserves the native WAP-produced MSIX, applies SHA-256
 Authenticode signatures with RFC 3161 timestamps, verifies the expected
-publisher, checks the App Installer identity and stable URLs, inspects the MSIX
+publisher, keeps the signed `MesmerPrism.MetaQuestFileManager` package identity
+for in-place updates, checks the App Installer identity and stable URLs, inspects the MSIX
 payload, and writes checksums. Before packaging, it resolves the published
 Kiosk tag to an exact commit and verifies the bundle version, source pointer,
 all declared byte counts and SHA-256 values, and both APK signer digests. The
@@ -91,7 +98,7 @@ URIs like a browser download.
 The guided setup also exposes a no-change agent route:
 
 ```powershell
-MetaQuestFileManager-Setup.exe --plan --json
+QuestIonAbleFileManager-Setup.exe --plan --json
 ```
 
 `--plan` downloads and validates the release identity without trusting a
